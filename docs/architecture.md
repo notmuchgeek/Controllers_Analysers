@@ -1,13 +1,13 @@
 ﻿# Architecture
 
-Version: `v16.2.260606.2137`
+Version: `v16.6.260606.2326`
 
 This file is retained as a compatibility entry point for older links.
 
-Use the current bilingual architecture documentation:
+Use the current architecture documentation:
 
 - [English architecture](en/architecture.md)
-- [涓枃鏋舵瀯璇存槑](zh-CN/architecture.md)
+- [Chinese README](../README.zh-CN.md)
 
 The active architecture summary is:
 

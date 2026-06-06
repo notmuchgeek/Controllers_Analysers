@@ -1,6 +1,6 @@
 ﻿# Maintenance Checklist
 
-Version: `v16.2.260606.2137`
+Version: `v16.6.260606.2326`
 
 Use this checklist before handing back code or documentation changes.
 
@@ -45,19 +45,12 @@ rg -n "<old-version>|<old-package-version>|<stale-electrical-placeholder>" AGENT
 Search for current version placement:
 
 ```cmd
-rg -n "v16\\.2\\.260606\\.2137|16\\.2\\.260606\\.2137|APP_VERSION|__version__|version =" AGENTS.md README.md README.zh-CN.md docs src pyproject.toml
+rg -n "<old-version>|<old-package-version>|APP_VERSION|__version__|version =" AGENTS.md README.md README.zh-CN.md docs src pyproject.toml
 ```
 
 ## Documentation Parity
 
-English and Chinese documentation should keep matching filenames under:
-
-```text
-docs/en/
-docs/zh-CN/
-```
-
-The content does not need to be word-for-word identical, but it should cover the same engineering and user information.
+English engineering documentation lives under `docs/en/`. Chinese documentation is kept in the root `README.zh-CN.md`; keep it valid UTF-8 and check rendered Chinese characters after edits.
 
 ## Cleanup
 

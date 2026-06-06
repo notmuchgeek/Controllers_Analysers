@@ -47,6 +47,15 @@ class AfmKpfmPanel(wx.Panel):
         if self.notebook.GetSelection() == 1:
             self.ensure_analysis_page()
 
+    def has_unloaded_lazy_pages(self):
+        return self.analysis_page is None
+
+    def preload_lazy_pages(self):
+        selection = self.notebook.GetSelection()
+        self.ensure_analysis_page()
+        if self.notebook.GetSelection() != selection and 0 <= selection < self.notebook.GetPageCount():
+            self.notebook.SetSelection(selection)
+
     def ensure_analysis_page(self):
         if self.analysis_page is not None:
             return self.analysis_page

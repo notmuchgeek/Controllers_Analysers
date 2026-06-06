@@ -1,6 +1,6 @@
 ﻿# Documentation Index
 
-Version: `v16.2.260606.2137`
+Version: `v16.6.260606.2326`
 
 This directory is the English engineering documentation for Controllers & Analysers. It is intended for GitHub users, lab users, maintainers, and coding agents.
 
@@ -31,6 +31,6 @@ This directory is the English engineering documentation for Controllers & Analys
 - [Module map](module-map.md)
 - [Maintenance checklist](maintenance-checklist.md)
 
-Chinese versions live in [`../zh-CN/`](../zh-CN/index.md).
+Chinese documentation is kept in the root [`README.zh-CN.md`](../../README.zh-CN.md).
 
 

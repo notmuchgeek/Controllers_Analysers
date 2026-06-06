@@ -71,6 +71,9 @@ TARGET_NEGATIVE_FRACTION = 0.15
 ASPLS_NEGATIVE_FRACTION_TOLERANCE = 0.04
 DRPLS_NEGATIVE_FRACTION_TOLERANCE = 0.05
 BACKCOR_EDGE_FRACTION = 0.05
+_DIFFERENCE_MATRIX_CACHE = {}
+_SMOOTH_PENALTY_CACHE = {}
+_SPARSE_IDENTITY_CACHE = {}
 
 
 class RamanBaselineError(ValueError):
@@ -408,10 +411,37 @@ def robust_scale(y: np.ndarray) -> float:
 def difference_matrix(n_points: int, order: int = 2):
     if order < 1:
         raise RamanBaselineError("Difference order must be >= 1.")
+    key = (int(n_points), int(order))
+    cached = _DIFFERENCE_MATRIX_CACHE.get(key)
+    if cached is not None:
+        return cached
     matrix = sparse.eye(n_points, format="csr")
     for _ in range(order):
         matrix = matrix[1:, :] - matrix[:-1, :]
-    return matrix.tocsc()
+    matrix = matrix.tocsc()
+    _DIFFERENCE_MATRIX_CACHE[key] = matrix
+    return matrix
+
+
+def sparse_identity(n_points: int):
+    key = int(n_points)
+    cached = _SPARSE_IDENTITY_CACHE.get(key)
+    if cached is not None:
+        return cached
+    identity = sparse.eye(n_points, format="csc")
+    _SPARSE_IDENTITY_CACHE[key] = identity
+    return identity
+
+
+def smooth_penalty_matrix(n_points: int, order: int, lambda_value: float):
+    key = (int(n_points), int(order), float(lambda_value))
+    cached = _SMOOTH_PENALTY_CACHE.get(key)
+    if cached is not None:
+        return cached
+    diff = difference_matrix(n_points, order=order)
+    penalty = float(lambda_value) * (diff.T @ diff)
+    _SMOOTH_PENALTY_CACHE[key] = penalty
+    return penalty
 
 
 def estimate_baseline_aspls(
@@ -424,8 +454,7 @@ def estimate_baseline_aspls(
 ) -> tuple[np.ndarray, np.ndarray, int]:
     y = np.asarray(y, dtype=float).ravel()
     n = len(y)
-    diff = difference_matrix(n, order=order)
-    smooth_penalty = float(lambda_value) * (diff.T @ diff)
+    smooth_penalty = smooth_penalty_matrix(n, order, lambda_value)
 
     weights = np.ones(n, dtype=float)
     adapt = np.ones(n, dtype=float)
@@ -473,11 +502,9 @@ def estimate_baseline_drpls(
         raise RamanBaselineError("eta must be between 0 and 1.")
 
     n = len(y)
-    smooth_diff = difference_matrix(n, order=order)
-    smooth_penalty = float(lambda_value) * (smooth_diff.T @ smooth_diff)
-    first_diff = difference_matrix(n, order=1)
-    first_penalty = first_diff.T @ first_diff
-    identity = sparse.eye(n, format="csc")
+    smooth_penalty = smooth_penalty_matrix(n, order, lambda_value)
+    first_penalty = smooth_penalty_matrix(n, 1, 1.0)
+    identity = sparse_identity(n)
 
     weights = np.ones(n, dtype=float)
     scale = robust_scale(y)

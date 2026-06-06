@@ -26,6 +26,7 @@ from ca_app.hardware.tpc_keithley import (
     output_on_and_read,
     set_tpc_source_current_mA,
 )
+from ca_app.runtime.usage_logger import log_usage_event
 
 
 class TpcLaserDiodePanel(wx.Panel):
@@ -167,6 +168,7 @@ class TpcLaserDiodePanel(wx.Panel):
         self.update_buttons()
         self.clear_measurements()
         self.log_selection(selection, current_request)
+        log_usage_event(self, "tpc_output_on_clicked", {"laser": selection.name, "clamped": current_request.clamped})
         self.worker_thread = threading.Thread(
             target=self.ld_on_worker,
             args=(selection.name, current_request.command_mA, current_request.clamped, com_port, baudrate),
@@ -194,6 +196,7 @@ class TpcLaserDiodePanel(wx.Panel):
         self.tc_applied_current.SetValue(f"{current_mA:.2f}")
         self.tc_output_power.SetValue(f"{optical_power:.2f}")
         self.log("TPC LD output ON. Readback completed.")
+        log_usage_event(self, "tpc_output_on_finished", {"clamped": clamped})
         self.update_buttons()
 
     def on_ld_off(self, event):
@@ -210,6 +213,7 @@ class TpcLaserDiodePanel(wx.Panel):
             self.update_buttons()
             self.show_warning(str(exc))
             return
+        log_usage_event(self, "tpc_output_off_clicked")
         self.worker_thread = threading.Thread(target=self.ld_off_worker, args=(com_port, baudrate), daemon=True)
         self.worker_thread.start()
 
@@ -224,11 +228,13 @@ class TpcLaserDiodePanel(wx.Panel):
         self.output_is_on = False
         self.command_running = False
         self.log("TPC LD output OFF sent.")
+        log_usage_event(self, "tpc_output_off_finished")
         self.update_buttons()
 
     def on_worker_error(self, message):
         self.command_running = False
         self.log(message)
+        log_usage_event(self, "tpc_hardware_command_failed")
         self.show_warning(message)
         self.update_buttons()
 

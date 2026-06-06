@@ -6,7 +6,7 @@ The project is research software. The goal is not to hide scientific workflow de
 
 ## Current Version
 
-Current project version: `v16.2.260606.2137`.
+Current project version: `v16.6.260606.2326`.
 
 The v16 line is a larger documentation and workflow consolidation release. The application title, About/Versions dialogs, package metadata, and documentation must all use the same version.
 

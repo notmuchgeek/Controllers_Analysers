@@ -34,6 +34,7 @@ from ca_app.core.afm_kpfm_analysis import (
     processed_region_mask,
     x_values_for_rows,
 )
+from ca_app.runtime.usage_logger import file_metadata, log_usage_event
 
 COLORMAP_CATEGORIES = {
     "Uniform": ["viridis", "plasma", "inferno", "magma", "cividis"],
@@ -422,6 +423,7 @@ class AfmAnalysisPanel(wx.Panel):
         self.set_file_text(self.tc_cpd_file, path)
         self.update_png_controls()
         self.log_loaded_image("Loaded CPD image", image)
+        log_usage_event(self, "afm_analysis_cpd_loaded", file_metadata(path))
         self.reload_loaded_masks()
         self.preview_notebook.SetSelection(0)
         self.force_preview_update(show_errors=True)
@@ -454,6 +456,7 @@ class AfmAnalysisPanel(wx.Panel):
             self.show_warning(str(exc))
             return
         self.log(f"Loaded HOPG {index + 1}: {Path(path).name}; fitted peak={peak:.6g} V, b={params['b']:.4g}.")
+        log_usage_event(self, "afm_analysis_hopg_loaded", {"index": index + 1, **file_metadata(path)})
         self.preview_notebook.SetSelection(3)
         self.force_preview_update(show_errors=True)
 
@@ -500,6 +503,7 @@ class AfmAnalysisPanel(wx.Panel):
         self.loaded_masks[index] = mask
         self.set_file_text(self.tc_mask1_file if index == 0 else self.tc_mask2_file, path)
         self.log(f"Loaded mask {index + 1}: {Path(path).name}.")
+        log_usage_event(self, "afm_analysis_mask_loaded", {"index": index + 1, **file_metadata(path)})
         self.force_preview_update(show_errors=True)
 
     def reload_loaded_masks(self):
@@ -1172,6 +1176,7 @@ class AfmAnalysisPanel(wx.Panel):
             self.show_warning(f"Could not save parameters:\n{exc}")
             return
         self.log(f"Saved AFM/KPFM analysis parameters: {path}")
+        log_usage_event(self, "afm_analysis_parameters_saved", file_metadata(path))
 
     def on_load_parameters(self, event):
         with wx.FileDialog(
@@ -1191,6 +1196,7 @@ class AfmAnalysisPanel(wx.Panel):
             self.show_warning(f"Could not load parameters:\n{exc}")
             return
         self.log(f"Loaded AFM/KPFM analysis parameters: {path}")
+        log_usage_event(self, "afm_analysis_parameters_loaded", file_metadata(path))
 
     @staticmethod
     def parse_float(text, name):

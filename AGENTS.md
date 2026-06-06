@@ -4,7 +4,7 @@ This file is the source of truth for coding agents working inside the `ca_app` p
 
 ## 1. Active Project
 
-The active runnable application is the packaged v16.2.260606.2137 application:
+The active runnable application is the packaged v16.6.260606.2326 application:
 
 Version format:
 
@@ -12,12 +12,12 @@ Version format:
 v<major>.<minor>.<YYMMDD>.<HHMM>
 ```
 
-For `v16.2.260606.2137`:
+For `v16.6.260606.2326`:
 
 - `v16` is the larger version change.
-- `.2` is the smaller version number within v16.
+- `.6` is the smaller version number within v16.
 - `260606` is the date of the change in YYMMDD format.
-- `2137` is the exact 24-hour time when Codex, the coding agent, changed code or project files.
+- `2326` is the exact 24-hour time when Codex, the coding agent, changed code or project files.
 
 Whenever Codex implements changes from a plan, increment the smaller version number, update the date, update the exact 24-hour time, and propagate the new version to the program window title, About/Versions text, package metadata, and project documentation.
 
@@ -45,8 +45,13 @@ Human and coding-agent documentation entry points:
 README.md
 README.zh-CN.md
 docs/en/index.md
-docs/zh-CN/index.md
 ```
+
+`README.md` and `README.zh-CN.md` are for non-programming lab users and research-group colleagues. Keep them friendly, practical, and focused on opening the app, choosing workspaces, loading data, previewing results, saving outputs, and hardware safety. Do not put developer test commands, package-install instructions, versioning rules, implementation details, cache/preload behavior, or agent-maintenance notes in the README files unless the user explicitly asks for a developer README.
+
+Technical details belong in `AGENTS.md` and `docs/en/`.
+
+Chinese project text is kept in `README.zh-CN.md`. Always edit Chinese text as UTF-8 and verify the rendered characters are correct; do not save Chinese Markdown through ANSI, GBK mis-decoding, or any workflow that produces mojibake.
 
 The AFM/KPFM controller behavior was migrated from the v10 reconstruction and should remain hardware-compatible unless explicitly changed.
 
@@ -184,7 +189,10 @@ src/ca_app/hardware/keithley_serial.py
   Serial settings and SCPI command primitives for future runtime extraction.
 
 src/ca_app/runtime/
-  Planned extraction area for sequence/quick-test worker services.
+  Runtime support services, currently including local usage logging.
+
+src/ca_app/runtime/usage_logger.py
+  Best-effort local JSONL workflow logging for later usability/performance review.
 
 src/ca_app/io/
   File import/export boundaries.
@@ -198,7 +206,7 @@ tests/
 
 ## 5. Refactor Rule
 
-The v16.2.260606.2137 application separates the main shell from independent workspace panels. The AFM/KPFM controller panel still intentionally keeps the tested Keithley runtime behavior together to avoid changing hardware semantics during naming and structure cleanup.
+The v16.6.260606.2326 application separates the main shell from independent workspace panels. The AFM/KPFM controller panel still intentionally keeps the tested Keithley runtime behavior together to avoid changing hardware semantics during naming and structure cleanup.
 
 When refactoring further:
 
@@ -416,6 +424,17 @@ Save Parameters and Load Parameters use JSON.
 - `Parameters` remembers workspace, tabs, loaded file paths, typed values, choices, and checkboxes where panel app-state adapters support it.
 
 Automatic app-state restore is separate from manual Save Parameters / Load Parameters files and must not influence those explicit user-selected files.
+
+Usage logs are separate from app-state restore and manual parameter files:
+
+- Logs are written under the same per-user application-data root as `app_state.json`, inside `usage_logs/`.
+- Files are daily JSONL files named `usage_YYYYMMDD.jsonl`.
+- Default retention is 30 days.
+- Logging is best-effort and must never block GUI actions, hardware actions, fitting, loading, or saving.
+- The About menu exposes `Open Usage Log Folder` and a `Usage Logging` toggle.
+- Log workspace/tab changes, app open/close, load/save actions, fit start/finish/failure, and long-operation durations.
+- Record file basename, extension, and coarse counts/durations only. Do not log full file paths, raw spectra, image data, measured hardware traces, measured voltages/currents, calibration table rows, user comments, or exported data contents.
+- When adding a new workspace or expensive operation, add a small, sanitized usage event so later optimization can be based on real user workflows.
 
 Important restore-maintenance rule:
 

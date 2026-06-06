@@ -1,8 +1,12 @@
 ﻿# Runtime Package
 
-Version: `v16.2.260606.2137`
+Version: `v16.6.260606.2326`
 
-This package is the planned extraction area for runtime services. The AFM/KPFM controller panel still keeps worker-thread orchestration locally to preserve tested hardware behavior.
+This package contains runtime support services and is also the planned extraction area for future worker services. The AFM/KPFM controller panel still keeps worker-thread orchestration locally to preserve tested hardware behavior.
+
+Current runtime support:
+
+- `usage_logger.py`: best-effort local JSONL workflow logging for usability and performance review. It records sanitized UI actions, file labels, counts, and durations only.
 
 Planned extraction targets:
 
@@ -27,8 +31,6 @@ See:
 
 - `docs/en/developer-guide.md`
 - `docs/en/hardware-safety.md`
-- `docs/zh-CN/developer-guide.md`
-- `docs/zh-CN/hardware-safety.md`
 
 Do not change Keithley command timing or STOP behavior during extraction without hardware-safe review.
 

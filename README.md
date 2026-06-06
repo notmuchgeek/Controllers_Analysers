@@ -1,87 +1,88 @@
 ﻿# Controllers & Analysers
 
-**English** | 
-Version: `v16.2.260606.2137`
+**English** | [简体中文](README.zh-CN.md)
 
-Controllers & Analysers is a wxPython desktop application for laboratory control and scientific analysis workflows. It combines Keithley-based AFM/KPFM control, CPD image analysis, APS/DWF/SPV analysis, TPC laser-diode control, Raman baseline correction, Raman mapping, Raman in situ electrochemical sequence analysis, and Raman Electrical current-voltage preview tools.
+Controllers & Analysers is a local desktop app for our lab experiment-control and data-analysis work. It is meant to be opened like a normal Windows program: choose the workspace you need, load your data or set your experiment parameters, check the preview, and save the result.
 
-## Documentation
+![AFM/KPFM controller screen](assets/images/AFM_KPFM_Controller.png)
 
-The detailed documentation is split by audience and language:
+## First Time Opening The App
 
-- [English documentation index](docs/en/index.md)
-- [Coding-agent instructions](AGENTS.md)
+If you already have a `ca_app.lnk` shortcut, double-click it to open the app.
 
-Useful starting points:
+If this is your first time using this copy of the project:
 
-- [Project overview](docs/en/project-overview.md)
-- [Architecture](docs/en/architecture.md)
-- [Workspace guide](docs/en/workspace-guide.md)
-- [Developer guide](docs/en/developer-guide.md)
-- [Testing](docs/en/testing.md)
-- [Versioning](docs/en/versioning.md)
+1. Double-click `create_ca_app_shortcut.bat`.
+2. If the window asks for a Python path, paste either the full `python.exe` path or the Anaconda folder path. If you are not sure, ask the maintainer.
+3. Wait until it says the shortcut was created.
+4. Double-click `ca_app.lnk` to open Controllers & Analysers.
+5. You may copy `ca_app.lnk` to your Desktop for easier access.
 
-## Main Workspaces
+The app window title shows the current version: `Controller & Analysers v16.6.260606.2326`.
 
-| Workspace | Main capabilities |
+## Everyday Use
+
+1. Open `ca_app.lnk`.
+2. Pick a workspace from the `View` menu.
+3. Use the left side to load files or enter settings.
+4. Use the right side to check plots, tables, previews, and logs.
+5. Save outputs with the save buttons in that workspace.
+6. Use `Save Parameters` if you want to keep your current settings for later.
+7. Use `Load Parameters` to restore a settings file you saved before.
+
+The `Restore` menu controls what the app remembers when it opens next time:
+
+- `View`: remember only the last workspace.
+- `Tab`: remember the last workspace and selected tabs.
+- `Parameters`: remember supported file paths and typed settings.
+
+The app can also keep simple local usage logs so the maintainer can see which workspaces are slow or confusing after a few days of real use. These logs record actions such as opening a workspace, loading or saving a file, and how long fitting takes. They do not record your raw data, full file paths, or hardware measurement traces. Use `About -> Open Usage Log Folder` to find them, and use `About -> Usage Logging` to turn this off or on.
+
+## Which Workspace Should I Use?
+
+| If you want to... | Use this workspace |
 | --- | --- |
-| AFM/KPFM Controller | Keithley current-source control, current/intensity modes, Quick Test, Recurrent/Step timing, function-profile overlay, calibration, live voltage preview, source CSV export, measured Keithley CSV export |
-| AFM/KPFM Analysis | CPD image loading, CPD/energy display, HOPG fitting, illuminated regions, masks, histograms, row/time profiles |
-| APS/DWF/SPV | APS, DWF, workfunction, DOS, and SPV analysis with plotting and CSV export workflows |
-| TPC Control | Red/green laser-diode current control through Keithley hardware |
-| Raman Baseline | TXT loading, `asPLS`, `drPLS`, `Polynomial/backcor`, corrected spectrum export |
-| Raman Mapping | WiRE WDF/TXT mapping import, average/normalised previews, raw/location/selected previews, selected spectra export and transfer |
-| Raman Insitu EChem | Sequence/WDF import, peak windows, peak positions, peak intensities, normalized ratios, PNG/CSV export |
-| Raman Electrical | Electrical CSV import, four-channel raw preview, V_Gate/V_Drain dual-axis preview, pulse summary table |
+| Run AFM/KPFM light or current timing with Keithley hardware | `View -> AFM/KPFM -> Controller` |
+| Analyse AFM/KPFM CPD images, regions, masks, profiles, or HOPG fitting | `View -> AFM/KPFM -> Analysis` |
+| Correct the baseline of a Raman spectrum | `View -> Raman -> Baseline` |
+| Load Raman mapping data and export selected spectra | `View -> Raman -> Mapping` |
+| Analyse Raman sequence data during electrochemistry experiments | `View -> Raman -> Insitu EChem` |
+| Preview Raman electrical CSV traces such as V_Gate and V_Drain | `View -> Raman -> Electrical` |
+| Analyse APS, DWF, DOS, workfunction, or SPV data | `View -> APS` |
+| Control the red or green TPC laser diode | `View -> TPC` |
 
-## Install
+## Before Using Hardware
 
-Known working environment:
+Only use hardware controls when the device is connected correctly and the current/compliance settings are safe.
 
-- Windows
-- Python 3.13.x
-- wxPython 4.2.x
-- pyserial 3.5
-- numpy
-- matplotlib
-- scipy
-- Pillow
-- `renishawWiRE` for `.wdf` Raman files
+For AFM/KPFM Controller, check these before pressing `START`:
 
-Install from the project root:
+- COM port, usually `COM3`
+- baudrate, usually `38400`
+- voltage compliance
+- internal max current
+- current mode or intensity mode
+- calibration file, if using intensity mode
+- preview of the planned source profile
 
-```cmd
-pip install -e .
-```
+For TPC Control, check the selected laser diode, current setting, current limit, COM port, and baudrate before turning output on.
 
-## Run
+## Gallery
 
-```cmd
-python run_ca_app.py
-```
+| AFM/KPFM Analysis | Raman Baseline |
+| --- | --- |
+| ![AFM/KPFM analysis](assets/images/AFM_KPFM_Analysis.png) | ![Raman baseline](assets/images/Raman_Baseline.png) |
 
-The window title should show:
+| Raman Mapping | Raman Insitu EChem |
+| --- | --- |
+| ![Raman mapping](assets/images/Raman_mapping.png) | ![Raman Insitu EChem analysis](assets/images/Raman_Insitu-Echem_Analysis.png) |
 
-```text
-Controller & Analysers v16.2.260606.2137
-```
+| APS/SPV Analysis | TPC Controller |
+| --- | --- |
+| ![APS SPV analysis](assets/images/APS_Analysis_SPV.png) | ![TPC controller](assets/images/TPC_controller.png) |
 
-## Test
+## Help
 
-```cmd
-python -m compileall src tests
-python -m unittest discover -s tests
-```
+If the shortcut does not open, if Python is missing, or if a hardware device does not respond, ask the maintainer before changing files or hardware settings.
 
-Hardware tests are not part of the default test suite. Any real Keithley or laser-diode check must be explicitly confirmed with safe current and compliance settings.
-
-## Version Rule
-
-The v16 series uses:
-
-```text
-v<major>.<minor>.<YYMMDD>.<HHMM>
-```
-
-For `v16.2.260606.2137`, `v16` is the larger version series, `2` is the smaller version inside v16, `260606` is the edit date, and `2137` is the exact 24-hour edit time. See [Versioning](docs/en/versioning.md).
-
+If the maintainer asks for usage logs, open `About -> Open Usage Log Folder` and send the recent `usage_*.jsonl` files.

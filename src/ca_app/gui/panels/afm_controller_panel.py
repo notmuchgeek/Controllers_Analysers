@@ -48,6 +48,7 @@ from ca_app.core.intensity_profile_tools import (
     evaluate_user_function,
     load_intensity_csv,
 )
+from ca_app.runtime.usage_logger import file_metadata, log_usage_event
 
 
 DEFAULT_COM_PORT = "COM3"
@@ -142,6 +143,7 @@ class AfmControllerPanel(wx.Panel):
         self.calibration_loading = False
         self.calibration_load_generation = 0
         self.calibration_background_thread = None
+        self.calibration_model_cache = {}
 
         self.manual_off_checks = {}
         self.manual_off_times = {}
@@ -1108,11 +1110,14 @@ class AfmControllerPanel(wx.Panel):
         return fitted_expr, fitted_parameters, rank < len(parameter_names)
 
     def on_fit_function(self, event):
+        started = time.monotonic()
+        log_usage_event(self, "afm_function_fit_started")
         try:
             self.log("Fit it started for Function control endpoints.")
             wx.YieldIfNeeded()
             fitted_expr, fitted_parameters, underdetermined = self.fit_function_expression_to_bounds()
         except Exception as exc:
+            log_usage_event(self, "afm_function_fit_failed", {"error": type(exc).__name__})
             self.show_warning(str(exc))
             return
 
@@ -1129,6 +1134,11 @@ class AfmControllerPanel(wx.Panel):
             self.log(f"Fit it solved function parameters: {parameter_text}")
         self.update_preview()
         self.update_function_preview_plot()
+        log_usage_event(
+            self,
+            "afm_function_fit_finished",
+            {"duration_ms": int((time.monotonic() - started) * 1000), "underdetermined": underdetermined},
+        )
 
     def solve_x_for_function_y(self, expr, target_y, search_min=0.0, search_max=10.0):
         if search_max <= search_min:
@@ -1704,8 +1714,12 @@ class AfmControllerPanel(wx.Panel):
                 return
             path = dialog.GetPath()
         self.calibration_path = path
+        metadata = file_metadata(path)
         if self.reload_calibration_model() and hasattr(self, "preview_notebook"):
             self.preview_notebook.SetSelection(2)
+            log_usage_event(self, "afm_calibration_loaded", metadata)
+        else:
+            log_usage_event(self, "afm_calibration_load_failed", metadata)
 
     def on_fit_method_changed(self, event):
         if self.calibration_path:
@@ -1765,12 +1779,33 @@ class AfmControllerPanel(wx.Panel):
 
     def build_calibration_model_from_path(self, path, method):
         x_min, x_max = self.current_calibration_fit_range()
-        return self.build_calibration_model(
+        key = self.calibration_cache_key(path, method, x_min, x_max)
+        if key in self.calibration_model_cache:
+            self.log(f"Reused cached calibration fit: {os.path.basename(path)} using {method}.")
+            return self.calibration_model_cache[key]
+        model = self.build_calibration_model(
             path,
             method,
             x_min,
             x_max,
             progress_callback=self.calibration_fit_progress if method in EMPIRICAL_CALIBRATION_METHODS else None,
+        )
+        self.calibration_model_cache[key] = model
+        return model
+
+    @staticmethod
+    def calibration_cache_key(path, method, x_min, x_max):
+        stat = os.stat(path)
+        normalized_range = (
+            None if x_min is None else round(float(x_min), 12),
+            None if x_max is None else round(float(x_max), 12),
+        )
+        return (
+            os.path.abspath(path),
+            stat.st_mtime_ns,
+            stat.st_size,
+            method,
+            normalized_range,
         )
 
     def reload_calibration_model(self, show_errors=True):
@@ -1818,6 +1853,11 @@ class AfmControllerPanel(wx.Panel):
         self.calibration_model = None
         self.calibration_file_label.SetLabel(f"Loading {os.path.basename(path)}...")
         self.log(f"Loading default calibration CSV in background: {path} using {method}.")
+        cache_key = self.calibration_cache_key(path, method, x_min, x_max)
+        cached_model = self.calibration_model_cache.get(cache_key)
+        if cached_model is not None:
+            wx.CallAfter(self.on_background_calibration_finished, generation, path, method, cached_model, None)
+            return
 
         def progress(message):
             wx.CallAfter(self.log_background_calibration_progress, generation, message)
@@ -1825,6 +1865,7 @@ class AfmControllerPanel(wx.Panel):
         def worker():
             try:
                 model = self.build_calibration_model(path, method, x_min, x_max, progress_callback=progress)
+                self.calibration_model_cache[cache_key] = model
             except Exception as exc:
                 wx.CallAfter(self.on_background_calibration_finished, generation, path, method, None, exc)
                 return
@@ -1894,6 +1935,7 @@ class AfmControllerPanel(wx.Panel):
             self.show_warning(f"Could not save source CSV:\n{exc}")
             return
         self.log(f"Saved Origin-friendly source CSV: {path}")
+        log_usage_event(self, "afm_source_csv_saved", file_metadata(path))
 
     def sequence_to_origin_source_rows(self, sequence, source_mode, pattern):
         rows = []
@@ -2114,6 +2156,7 @@ class AfmControllerPanel(wx.Panel):
             self.show_warning(f"Could not save parameters:\n{exc}")
             return
         self.log(f"Saved parameters: {path}")
+        log_usage_event(self, "afm_controller_parameters_saved", file_metadata(path))
 
     def on_load_parameters(self, event):
         with wx.FileDialog(self, "Load parameters", wildcard="JSON files (*.json)|*.json", style=wx.FD_OPEN | wx.FD_FILE_MUST_EXIST) as dialog:
@@ -2128,6 +2171,7 @@ class AfmControllerPanel(wx.Panel):
             self.show_warning(f"Could not load parameters:\n{exc}")
             return
         self.log(f"Loaded parameters: {path}")
+        log_usage_event(self, "afm_controller_parameters_loaded", file_metadata(path))
 
     # ------------------------------------------------------------------
     # Keithley communication
@@ -2218,6 +2262,7 @@ class AfmControllerPanel(wx.Panel):
         self.update_preview()
         self.quick_thread = threading.Thread(target=self.quick_test_worker, args=(settings, current_ma, value, source_mode), daemon=True)
         self.quick_thread.start()
+        log_usage_event(self, "afm_quick_test_started", {"source_mode": source_mode})
 
     def stop_quick_test(self):
         if not self.quick_running:
@@ -2279,6 +2324,7 @@ class AfmControllerPanel(wx.Panel):
         self.update_quick_test_controls()
         self.update_preview()
         self.log("Quick Test ended.")
+        log_usage_event(self, "afm_quick_test_finished")
 
     # ------------------------------------------------------------------
     # Sequence execution
@@ -2311,12 +2357,18 @@ class AfmControllerPanel(wx.Panel):
         self.btn_save_keithley.Disable()
         self.log("Starting sequence...")
         self.log(run_snapshot["lock_message"])
+        log_usage_event(
+            self,
+            "afm_sequence_started",
+            {"source_mode": run_snapshot.get("source_mode", ""), "pattern": run_snapshot.get("pattern", "")},
+        )
         self.worker_thread = threading.Thread(target=self.run_sequence_worker, args=(run_snapshot,), daemon=True)
         self.worker_thread.start()
 
     def on_stop(self, event):
         self.stop_event.set()
         self.log("Stop requested. Sending output OFF.")
+        log_usage_event(self, "afm_sequence_stop_clicked")
         self.set_output_off()
 
     def build_run_snapshot(self, settings):
@@ -2683,6 +2735,7 @@ class AfmControllerPanel(wx.Panel):
                 writer.writeheader()
                 writer.writerows(self.data_rows)
             self.log(f"Saved Keithley run data CSV: {path}")
+            log_usage_event(self, "afm_keithley_csv_saved", file_metadata(path))
         except OSError as exc:
             self.show_warning(f"Could not save Keithley run data CSV:\n{exc}")
 
@@ -2697,8 +2750,10 @@ class AfmControllerPanel(wx.Panel):
         self.update_save_keithley_controls()
         if finished_normally:
             self.log("Worker finished.")
+            log_usage_event(self, "afm_sequence_finished", {"finished_normally": True})
         else:
             self.log("Worker ended after stop or error.")
+            log_usage_event(self, "afm_sequence_finished", {"finished_normally": False})
 
     # ------------------------------------------------------------------
     # Logging

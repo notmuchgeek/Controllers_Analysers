@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import threading
+import time
 from datetime import datetime
 from pathlib import Path
 
@@ -79,6 +81,7 @@ from ca_app.core.raman_baseline import (
     read_raman_txt,
     save_corrected_txt,
 )
+from ca_app.runtime.usage_logger import file_metadata, log_usage_event
 
 
 def preview_percent_from_slider(value: int) -> float:
@@ -427,6 +430,16 @@ class RamanMappingPanel(wx.Panel):
             f"Loaded {Path(path).name}: {self.dataset.n_points} Raman points, "
             f"{self.dataset.n_spectra} spectra, source={self.dataset.source_type}."
         )
+        log_usage_event(
+            self,
+            "raman_mapping_loaded",
+            {
+                "spectra": self.dataset.n_spectra,
+                "points": self.dataset.n_points,
+                "source_type": self.dataset.source_type,
+                **file_metadata(path),
+            },
+        )
 
     def set_loaded_file_display(self, path):
         self.lbl_mapping_file.SetValue(Path(path).name)
@@ -642,6 +655,7 @@ class RamanMappingPanel(wx.Panel):
             self.show_warning(str(exc))
             return
         self.log(f"Saved Origin-friendly Mapping TXT: {saved}")
+        log_usage_event(self, "raman_mapping_origin_saved", file_metadata(saved))
 
     def on_save_selected(self, event):
         if self.dataset is None:
@@ -665,6 +679,7 @@ class RamanMappingPanel(wx.Panel):
             self.show_warning(str(exc))
             return
         self.log(f"Saved selected Mapping sequence TXT: {saved}")
+        log_usage_event(self, "raman_mapping_selected_saved", file_metadata(saved))
 
     def on_load_to_insitu(self, event):
         if self.dataset is None:
@@ -678,6 +693,7 @@ class RamanMappingPanel(wx.Panel):
         self.raman_panel.insitu_page.load_sequence_data(data, source_label=f"Mapping: {Path(self.raw_path).name}")
         self.raman_panel.notebook.SetSelection(2)
         self.log("Loaded selected Mapping spectra into Insitu EChem in memory.")
+        log_usage_event(self, "raman_mapping_loaded_to_insitu", {"selected_spectra": len(data.sequence_values)})
 
     def show_warning(self, message):
         wx.MessageBox(message, "Mapping warning", wx.OK | wx.ICON_WARNING, self)
@@ -886,6 +902,11 @@ class RamanElectricalPanel(wx.Panel):
         self.log(
             f"Loaded {Path(path).name}: {self.data.n_rows} rows, "
             f"total time {self.data.total_time_s:.6g} s."
+        )
+        log_usage_event(
+            self,
+            "raman_electrical_loaded",
+            {"rows": self.data.n_rows, "missing_columns": len(self.data.missing_columns), **file_metadata(path)},
         )
         if self.data.missing_columns:
             self.log("Missing exact column(s): " + ", ".join(self.data.missing_columns))
@@ -1521,6 +1542,7 @@ class RamanInsituEchemPanel(wx.Panel):
         self.raw_path = path
         self.in_memory_data = None
         self.set_loaded_file_display(path)
+        log_usage_event(self, "raman_insitu_file_selected", file_metadata(path))
         self.force_preview_update()
 
     def load_sequence_data(self, data, source_label="In-memory sequence"):
@@ -1528,6 +1550,7 @@ class RamanInsituEchemPanel(wx.Panel):
         self.in_memory_data = data
         self.source_label = source_label
         self.set_loaded_file_display(source_label)
+        log_usage_event(self, "raman_insitu_in_memory_loaded", {"source_label": source_label})
         self.force_preview_update()
 
     def on_x_mode_changed(self, event):
@@ -1838,6 +1861,7 @@ class RamanInsituEchemPanel(wx.Panel):
         figure.savefig(image_path, dpi=200)
         csv_writer(data_path)
         self.log(f"Saved {plot_name}: {image_path}; {data_path}")
+        log_usage_event(self, "raman_insitu_result_saved", {"plot": plot_name, **file_metadata(data_path)})
 
     def on_save_spectra(self, event):
         def write_csv(path):
@@ -1887,6 +1911,8 @@ class RamanSubstrateBaselinePanel(wx.Panel):
         self.wire_spectrum = None
         self.result = None
         self.fit_running = False
+        self.fit_result_cache = {}
+        self.fit_started_at = None
         self.build_ui()
 
     def build_ui(self):
@@ -2020,6 +2046,7 @@ class RamanSubstrateBaselinePanel(wx.Panel):
         self.btn_save.Disable()
         self.draw_loaded_raw()
         self.log(f"Loaded Raman file: {Path(path).name}.")
+        log_usage_event(self, "raman_baseline_raw_loaded", file_metadata(path))
         if self.rb_auto.GetValue():
             self.start_fit("Auto fitting after Raman file load.")
 
@@ -2036,6 +2063,7 @@ class RamanSubstrateBaselinePanel(wx.Panel):
         self.wire_path = path
         self.lbl_wire.SetLabel(Path(path).name)
         self.log(f"Loaded WiRE software analysed results: {Path(path).name}.")
+        log_usage_event(self, "raman_baseline_wire_loaded", file_metadata(path))
         if self.result is not None:
             self.draw_result()
 
@@ -2075,32 +2103,53 @@ class RamanSubstrateBaselinePanel(wx.Panel):
         except Exception as exc:
             self.show_warning(str(exc))
             return
+        cache_key = self.fit_cache_key(self.raw_spectrum, settings)
+        cached_result = self.fit_result_cache.get(cache_key)
+        if cached_result is not None:
+            self.log(f"{message} Reused cached Raman baseline fit.")
+            log_usage_event(self, "raman_baseline_fit_reused", {"method": settings.method, "auto": settings.auto})
+            self.on_fit_result(cached_result, log_finished=False)
+            return
 
         self.fit_running = True
+        self.fit_started_at = time.monotonic()
         self.update_buttons()
         self.log(message)
-        threading.Thread(target=self.fit_worker, args=(self.raw_spectrum, settings), daemon=True).start()
+        log_usage_event(self, "raman_baseline_fit_started", {"method": settings.method, "auto": settings.auto})
+        threading.Thread(target=self.fit_worker, args=(self.raw_spectrum, settings, cache_key), daemon=True).start()
 
-    def fit_worker(self, spectrum, settings):
+    def fit_worker(self, spectrum, settings, cache_key):
         try:
             result = fit_raman_baseline(spectrum, settings)
-            wx.CallAfter(self.on_fit_result, result)
+            wx.CallAfter(self.on_fit_result, result, cache_key)
         except Exception as exc:
             wx.CallAfter(self.on_fit_error, f"Raman baseline fit failed: {exc}")
 
-    def on_fit_result(self, result):
+    def on_fit_result(self, result, cache_key=None, log_finished=True):
         self.result = result
+        if cache_key is not None:
+            self.fit_result_cache[cache_key] = result
         self.fit_running = False
         self.update_buttons()
         self.draw_result()
         self.log_selected_parameters(result)
+        duration_ms = int((time.monotonic() - self.fit_started_at) * 1000) if self.fit_started_at is not None else 0
+        self.fit_started_at = None
+        if log_finished:
+            log_usage_event(
+                self,
+                "raman_baseline_fit_finished",
+                {"method": result.method, "auto": result.auto, "duration_ms": duration_ms, "candidates": len(result.search_records)},
+            )
         if result.auto:
             self.log(f"Evaluated {len(result.search_records)} automatic parameter candidate(s).")
 
     def on_fit_error(self, message):
         self.fit_running = False
+        self.fit_started_at = None
         self.update_buttons()
         self.log(message)
+        log_usage_event(self, "raman_baseline_fit_failed")
         self.show_warning(message)
 
     def on_save(self, event):
@@ -2122,6 +2171,7 @@ class RamanSubstrateBaselinePanel(wx.Panel):
             self.show_warning(str(exc))
             return
         self.log(f"Saved corrected Raman spectrum: {saved_path}")
+        log_usage_event(self, "raman_baseline_corrected_saved", file_metadata(saved_path))
 
     def read_settings(self):
         method = self.choice_method.GetStringSelection()
@@ -2156,6 +2206,28 @@ class RamanSubstrateBaselinePanel(wx.Panel):
             lambda_value=self.parse_single_float(self.tc_param1.GetValue(), "lambda"),
             secondary_value=self.parse_single_float(self.tc_param2.GetValue(), self.secondary_label(method)),
         )
+
+    @staticmethod
+    def fit_cache_key(spectrum, settings):
+        digest = hashlib.blake2b(digest_size=16)
+        x = np.ascontiguousarray(spectrum.raman_shift, dtype=np.float64)
+        y = np.ascontiguousarray(spectrum.intensity, dtype=np.float64)
+        digest.update(x.tobytes())
+        digest.update(y.tobytes())
+        settings_key = (
+            settings.method,
+            bool(settings.auto),
+            tuple(float(value) for value in settings.lambda_values),
+            tuple(float(value) for value in settings.secondary_values),
+            None if settings.lambda_value is None else float(settings.lambda_value),
+            None if settings.secondary_value is None else float(settings.secondary_value),
+            tuple(int(value) for value in settings.order_values),
+            tuple(float(value) for value in settings.threshold_values),
+            None if settings.order_value is None else int(settings.order_value),
+            None if settings.threshold_value is None else float(settings.threshold_value),
+            float(settings.below_baseline_fraction),
+        )
+        return (spectrum.name, len(x), digest.hexdigest(), settings_key)
 
     @staticmethod
     def parse_int_list(text, name):

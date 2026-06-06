@@ -1,6 +1,6 @@
 ﻿# Developer Guide
 
-Version: `v16.2.260606.2137`
+Version: `v16.6.260606.2326`
 
 This guide is for coding agents and human maintainers.
 
@@ -22,6 +22,7 @@ Avoid:
 - Renumbering user-visible Raman sequence labels.
 - Adding automatic file outputs after a run.
 - Saving active hardware state in app-state restore.
+- Logging raw data, full user file paths, measured hardware traces, or measured voltage/current values.
 
 ## GUI Pattern
 
@@ -47,6 +48,15 @@ Use these boundaries when adding code:
 - `resources/`: bundled data files.
 - `tests/`: non-hardware tests.
 
+## Usage Logging
+
+Use `ca_app.runtime.usage_logger.log_usage_event()` from GUI code when adding a new user workflow, expensive fit, file load/save, or workspace-level action. Keep event metadata small and sanitized:
+
+- OK: workspace name, tab name, method name, duration in ms, row/spectrum/image counts, output kind, file basename and extension.
+- Not OK: full file paths, raw spectra/image arrays, measured hardware traces, measured voltages/currents, calibration CSV rows, comments, or exported data contents.
+
+Logging must stay best-effort. Never make a user action fail because a usage log cannot be written.
+
 ## Version Updates
 
 For any code or documentation implementation from a plan, update:
@@ -57,7 +67,7 @@ For any code or documentation implementation from a plan, update:
 - Root `README.md`
 - Root `README.zh-CN.md`
 - Root `AGENTS.md`
-- Relevant docs under `docs/en/` and `docs/zh-CN/`
+- Relevant docs under `docs/en/`
 
 See [Versioning](versioning.md).
 

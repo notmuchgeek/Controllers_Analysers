@@ -29,3 +29,8 @@ Raman has multiple nested notebooks, including Electrical. Tests must cover new 
 
 When a panel reloads a file during restore, it must reapply typed fields after the reload if the reload resets those fields. This is important for Raman Mapping ranges, Insitu EChem peak windows, and Raman Electrical preview seconds.
 
+## Usage Logs
+
+Usage logs are separate from restore state. The `usage_logging_enabled` setting is saved with app state so the About-menu toggle survives restart, but the logs themselves live in the sibling `usage_logs/` folder and do not drive any restore behavior.
+
+Do not store active hardware state or raw analysis data in usage logs.

@@ -1,17 +1,21 @@
-"""Main application frame for Controllers & Analysers."""
+﻿"""Main application frame for Controllers & Analysers."""
 
 from __future__ import annotations
 
 import json
+import os
+import time
 from importlib import import_module
 from pathlib import Path
 
 import wx
 
+from ca_app.runtime.usage_logger import USAGE_LOG_DIRNAME, UsageLogger
+
 
 WORKSPACE_NAMES = ("AFM/KPFM", "APS", "TPC", "Raman")
 DEFAULT_WORKSPACE = "AFM/KPFM"
-APP_VERSION = "v16.2.260606.2137"
+APP_VERSION = "v16.6.260606.2326"
 APP_TITLE = f"Controller & Analysers {APP_VERSION}"
 STATE_FILENAME = "app_state.json"
 RESTORE_VIEW = "view"
@@ -25,6 +29,10 @@ WORKSPACE_FACTORIES = {
     "TPC": ("ca_app.gui.panels.tpc_panel", "TpcLaserDiodePanel"),
     "Raman": ("ca_app.gui.panels.raman_panel", "RamanAnalysisPanel"),
 }
+IDLE_PRELOAD_DELAY_MS = 1800
+IDLE_PRELOAD_STEP_DELAY_MS = 650
+IDLE_PRELOAD_QUIET_S = 1.5
+IDLE_PRELOAD_WORKSPACE_PRIORITY = ("Raman", "AFM/KPFM", "APS", "TPC")
 
 
 def normalize_workspace_name(workspace):
@@ -33,6 +41,14 @@ def normalize_workspace_name(workspace):
 
 def normalize_restore_level(level):
     return level if level in RESTORE_LEVELS else DEFAULT_RESTORE_LEVEL
+
+
+def normalize_usage_logging_enabled(value):
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() not in {"0", "false", "no", "off"}
+    return True
 
 
 def normalize_app_state(data):
@@ -44,6 +60,7 @@ def normalize_app_state(data):
         "last_workspace": normalize_workspace_name(data.get("last_workspace")),
         "tabs": data.get("tabs") if isinstance(data.get("tabs"), dict) else {},
         "parameters": data.get("parameters") if isinstance(data.get("parameters"), dict) else {},
+        "usage_logging_enabled": normalize_usage_logging_enabled(data.get("usage_logging_enabled", True)),
     }
 
 
@@ -82,12 +99,26 @@ class CaAppFrame(wx.Frame):
         self.restore_menu_items = {}
         self.app_state = self.load_app_state()
         self.restore_level = self.app_state["restore_level"]
+        self.usage_logging_enabled = self.app_state["usage_logging_enabled"]
+        self.usage_logger = UsageLogger(
+            self.usage_log_dir_path(),
+            APP_VERSION,
+            enabled=self.usage_logging_enabled,
+        )
         self.active_workspace = self.app_state["last_workspace"]
         self.restoring_state = False
         self.bound_notebook_ids = set()
+        self.bound_activity_ids = set()
+        self.last_user_activity = time.monotonic()
+        self.idle_preload_timer = None
+        self.preload_running = False
+        self.closing = False
         self.build_ui()
+        self.bind_activity_events()
         self.Bind(wx.EVT_CLOSE, self.on_close)
         self.Centre()
+        self.log_usage_event("app_started", metadata={"restore_level": self.restore_level})
+        wx.CallAfter(self.schedule_idle_preload)
 
     def build_ui(self):
         self.build_menu_bar()
@@ -138,9 +169,14 @@ class CaAppFrame(wx.Frame):
         about_menu = wx.Menu()
         versions_item = about_menu.Append(wx.ID_ANY, "&Versions")
         developer_item = about_menu.Append(wx.ID_ANY, "&Developer")
+        usage_folder_item = about_menu.Append(wx.ID_ANY, "Open Usage Log Folder")
+        self.usage_logging_item = about_menu.AppendCheckItem(wx.ID_ANY, "Usage Logging")
+        self.usage_logging_item.Check(self.usage_logging_enabled)
         about_item = about_menu.Append(wx.ID_ABOUT, "&About")
         self.Bind(wx.EVT_MENU, self.on_versions, id=versions_item.GetId())
         self.Bind(wx.EVT_MENU, self.on_developer, id=developer_item.GetId())
+        self.Bind(wx.EVT_MENU, self.on_open_usage_log_folder, id=usage_folder_item.GetId())
+        self.Bind(wx.EVT_MENU, self.on_toggle_usage_logging, id=self.usage_logging_item.GetId())
         self.Bind(wx.EVT_MENU, self.on_about, id=about_item.GetId())
         menu_bar.Append(about_menu, "&About")
 
@@ -167,17 +203,22 @@ class CaAppFrame(wx.Frame):
         return panel
 
     def on_view_workspace(self, event, workspace):
+        self.mark_user_activity()
         self.show_workspace(workspace)
 
     def on_restore_level(self, event, restore_level):
+        self.mark_user_activity()
         self.restore_level = normalize_restore_level(restore_level)
         if self.restore_level in self.restore_menu_items:
             self.restore_menu_items[self.restore_level].Check(True)
+        self.log_usage_event("restore_level_changed", metadata={"restore_level": self.restore_level})
         self.save_current_app_state()
 
     def show_workspace(self, workspace):
         if workspace not in WORKSPACE_NAMES:
             return
+        previous_workspace = self.active_workspace
+        start = time.monotonic()
         self.ensure_workspace_panel(workspace)
         self.active_workspace = workspace
         for name, panel in self.workspace_panels.items():
@@ -192,6 +233,15 @@ class CaAppFrame(wx.Frame):
             except Exception:
                 pass
         self.workspace_container.Layout()
+        if not self.restoring_state and previous_workspace != workspace:
+            self.log_usage_event(
+                "workspace_changed",
+                metadata={
+                    "from": previous_workspace,
+                    "to": workspace,
+                    "duration_ms": int((time.monotonic() - start) * 1000),
+                },
+            )
         self.save_current_app_state()
 
     def ensure_workspace_panel(self, workspace):
@@ -204,8 +254,97 @@ class CaAppFrame(wx.Frame):
         self.workspace_panels[workspace] = panel
         self.workspace_sizer.Add(panel, 1, wx.EXPAND)
         self.bind_notebook_save_events(panel)
+        self.bind_activity_events(panel)
         self.apply_initial_workspace_state(workspace, panel)
         return panel
+
+    def bind_activity_events(self, window=None):
+        window = self if window is None else window
+        window_id = id(window)
+        if window_id not in self.bound_activity_ids:
+            try:
+                window.Bind(wx.EVT_CHAR_HOOK, self.on_user_activity)
+                window.Bind(wx.EVT_MOUSE_EVENTS, self.on_user_activity)
+                window.Bind(wx.EVT_TEXT, self.on_user_activity)
+                window.Bind(wx.EVT_BUTTON, self.on_user_activity)
+                window.Bind(wx.EVT_CHOICE, self.on_user_activity)
+                window.Bind(wx.EVT_CHECKBOX, self.on_user_activity)
+                window.Bind(wx.EVT_RADIOBUTTON, self.on_user_activity)
+            except Exception:
+                pass
+            self.bound_activity_ids.add(window_id)
+        for child in window.GetChildren():
+            self.bind_activity_events(child)
+
+    def on_user_activity(self, event):
+        self.mark_user_activity()
+        event.Skip()
+
+    def mark_user_activity(self):
+        self.last_user_activity = time.monotonic()
+        self.schedule_idle_preload()
+
+    def schedule_idle_preload(self, delay_ms=IDLE_PRELOAD_DELAY_MS):
+        if self.closing:
+            return
+        if self.idle_preload_timer is not None and self.idle_preload_timer.IsRunning():
+            self.idle_preload_timer.Stop()
+        self.idle_preload_timer = wx.CallLater(delay_ms, self.run_idle_preload_step)
+
+    def run_idle_preload_step(self):
+        if self.closing or self.preload_running:
+            return
+        quiet_for = time.monotonic() - self.last_user_activity
+        if quiet_for < IDLE_PRELOAD_QUIET_S:
+            remaining_ms = max(250, int((IDLE_PRELOAD_QUIET_S - quiet_for) * 1000))
+            self.schedule_idle_preload(remaining_ms)
+            return
+        target = self.next_idle_preload_target()
+        if target is None:
+            return
+        self.preload_running = True
+        restoring_state = self.restoring_state
+        self.restoring_state = True
+        try:
+            if target == ("lazy", self.active_workspace):
+                panel = self.workspace_panels.get(self.active_workspace)
+                if panel is not None and hasattr(panel, "preload_lazy_pages"):
+                    panel.preload_lazy_pages()
+                    self.bind_notebook_save_events(panel)
+                    self.bind_activity_events(panel)
+            else:
+                workspace = target[1]
+                panel = self.ensure_workspace_panel(workspace)
+                panel.Show(False)
+                if hasattr(panel, "preload_lazy_pages"):
+                    panel.preload_lazy_pages()
+                    self.bind_notebook_save_events(panel)
+                    self.bind_activity_events(panel)
+            self.workspace_container.Layout()
+        finally:
+            self.restoring_state = restoring_state
+            self.preload_running = False
+        self.schedule_idle_preload(IDLE_PRELOAD_STEP_DELAY_MS)
+
+    def next_idle_preload_target(self):
+        active_panel = self.workspace_panels.get(self.active_workspace)
+        if active_panel is not None and hasattr(active_panel, "has_unloaded_lazy_pages"):
+            try:
+                if active_panel.has_unloaded_lazy_pages():
+                    return ("lazy", self.active_workspace)
+            except Exception:
+                pass
+        for workspace in IDLE_PRELOAD_WORKSPACE_PRIORITY:
+            if workspace not in self.workspace_panels:
+                return ("workspace", workspace)
+            panel = self.workspace_panels.get(workspace)
+            if panel is not None and hasattr(panel, "has_unloaded_lazy_pages"):
+                try:
+                    if panel.has_unloaded_lazy_pages():
+                        return ("lazy", workspace)
+                except Exception:
+                    continue
+        return None
 
     def apply_initial_workspace_state(self, workspace, panel):
         restoring_state = self.restoring_state
@@ -234,6 +373,10 @@ class CaAppFrame(wx.Frame):
         folder = wx.StandardPaths.Get().GetUserLocalDataDir()
         return Path(folder) / STATE_FILENAME
 
+    def usage_log_dir_path(self):
+        folder = wx.StandardPaths.Get().GetUserLocalDataDir()
+        return Path(folder) / USAGE_LOG_DIRNAME
+
     def load_app_state(self):
         return load_app_state(self.state_file_path())
 
@@ -255,6 +398,7 @@ class CaAppFrame(wx.Frame):
             "last_workspace": self.active_workspace,
             "tabs": {},
             "parameters": {},
+            "usage_logging_enabled": self.usage_logging_enabled,
         }
         if self.restore_level in {RESTORE_TAB, RESTORE_PARAMETERS}:
             state["tabs"] = self.collect_all_tab_state(self.app_state.get("tabs", {}))
@@ -329,6 +473,22 @@ class CaAppFrame(wx.Frame):
 
     def on_any_notebook_changed(self, event):
         event.Skip()
+        if self.restoring_state:
+            return
+        self.mark_user_activity()
+        notebook = event.GetEventObject()
+        try:
+            selection = notebook.GetSelection()
+            page = notebook.GetPageText(selection) if selection >= 0 else ""
+            pages = [notebook.GetPageText(index) for index in range(notebook.GetPageCount())]
+        except Exception:
+            selection = -1
+            page = ""
+            pages = []
+        self.log_usage_event(
+            "notebook_tab_changed",
+            metadata={"selection": selection, "page": page, "pages": "|".join(pages)},
+        )
         self.bind_notebook_save_events()
         if self.restore_level in {RESTORE_TAB, RESTORE_PARAMETERS}:
             wx.CallAfter(self.save_current_app_state)
@@ -423,8 +583,36 @@ class CaAppFrame(wx.Frame):
         return found
 
     def on_close(self, event):
+        self.closing = True
+        if self.idle_preload_timer is not None and self.idle_preload_timer.IsRunning():
+            self.idle_preload_timer.Stop()
+        self.log_usage_event("app_closed")
         self.save_current_app_state()
         event.Skip()
+
+    def log_usage_event(self, event_type, workspace=None, metadata=None):
+        if self.usage_logger is None:
+            return
+        self.usage_logger.enabled = self.usage_logging_enabled
+        self.usage_logger.log(event_type, workspace=workspace or self.active_workspace, metadata=metadata)
+
+    def on_open_usage_log_folder(self, event):
+        self.mark_user_activity()
+        path = self.usage_log_dir_path()
+        try:
+            path.mkdir(parents=True, exist_ok=True)
+            os.startfile(str(path))
+            self.log_usage_event("usage_log_folder_opened")
+        except Exception as exc:
+            wx.MessageBox(f"Could not open usage log folder:\n{exc}", "Usage logs", wx.OK | wx.ICON_WARNING, self)
+
+    def on_toggle_usage_logging(self, event):
+        self.mark_user_activity()
+        self.usage_logging_enabled = bool(self.usage_logging_item.IsChecked())
+        self.usage_logger.enabled = self.usage_logging_enabled
+        if self.usage_logging_enabled:
+            self.log_usage_event("usage_logging_enabled")
+        self.save_current_app_state()
 
     def on_versions(self, event):
         message = (

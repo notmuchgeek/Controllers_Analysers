@@ -35,6 +35,7 @@ from ca_app.core.aps_analysis import (
     save_normalized_spv_csv,
     save_spv_csv,
 )
+from ca_app.runtime.usage_logger import file_metadata, log_usage_event
 
 
 class ApsAnalysisPanel(wx.Panel):
@@ -332,6 +333,7 @@ class ApsAnalysisPanel(wx.Panel):
             self.dwf_paths = paths
             self.lbl_dwf.SetLabel(self.describe_paths(paths))
             self.btn_save_workfunction.Disable()
+            log_usage_event(self, "aps_dwf_loaded", {"count": len(paths), **file_metadata(paths[0])})
             self.schedule_preview()
 
     def on_load_ref_aps(self, event):
@@ -341,6 +343,7 @@ class ApsAnalysisPanel(wx.Panel):
             self.lbl_ref_aps.SetLabel(Path(paths[0]).name)
             self.apply_ref_aps_metadata(paths[0])
             self.btn_save_workfunction.Disable()
+            log_usage_event(self, "aps_ref_aps_loaded", file_metadata(paths[0]))
             self.schedule_preview()
 
     def on_load_ref_dwf(self, event):
@@ -349,6 +352,7 @@ class ApsAnalysisPanel(wx.Panel):
             self.ref_dwf_path = paths[0]
             self.lbl_ref_dwf.SetLabel(Path(paths[0]).name)
             self.btn_save_workfunction.Disable()
+            log_usage_event(self, "aps_ref_dwf_loaded", file_metadata(paths[0]))
             self.schedule_preview()
 
     def on_load_aps(self, event):
@@ -359,6 +363,7 @@ class ApsAnalysisPanel(wx.Panel):
             self.apply_aps_metadata(paths)
             self.btn_save_aps.Disable()
             self.notebook.SetSelection(1)
+            log_usage_event(self, "aps_files_loaded", {"count": len(paths), **file_metadata(paths[0])})
             self.schedule_preview()
 
     def on_load_spv(self, event):
@@ -368,6 +373,7 @@ class ApsAnalysisPanel(wx.Panel):
             self.lbl_spv.SetLabel(self.describe_paths(paths))
             self.btn_save_spv.Disable()
             self.notebook.SetSelection(3)
+            log_usage_event(self, "spv_files_loaded", {"count": len(paths), **file_metadata(paths[0])})
             try:
                 settings = self.read_spv_settings()
                 data = import_spv_files(paths, settings)
@@ -866,6 +872,7 @@ class ApsAnalysisPanel(wx.Panel):
         self.update_analysis_buttons()
         self.notebook.SetSelection(0)
         self.log("Starting workfunction analysis...")
+        log_usage_event(self, "aps_workfunction_analysis_started", {"dwf_files": len(self.dwf_paths)})
         threading.Thread(target=self.workfunction_worker, args=(settings,), daemon=True).start()
 
     def workfunction_worker(self, settings):
@@ -883,6 +890,7 @@ class ApsAnalysisPanel(wx.Panel):
         self.update_workfunction_preview()
         self.notebook.SetSelection(0)
         self.log("Workfunction analysis completed.")
+        log_usage_event(self, "aps_workfunction_analysis_finished", {"dwf_files": len(result.dwf_data)})
 
     @staticmethod
     def annotate_workfunction_result(ax, result):
@@ -917,6 +925,7 @@ class ApsAnalysisPanel(wx.Panel):
         self.update_analysis_buttons()
         self.notebook.SetSelection(1)
         self.log("Starting APS analysis...")
+        log_usage_event(self, "aps_analysis_started", {"aps_files": len(self.aps_paths)})
         threading.Thread(target=self.aps_worker, args=(aps_settings, dos_settings), daemon=True).start()
 
     def aps_worker(self, aps_settings, dos_settings):
@@ -935,6 +944,7 @@ class ApsAnalysisPanel(wx.Panel):
         self.draw_dos_results(result)
         self.notebook.SetSelection(1)
         self.log("APS analysis completed.")
+        log_usage_event(self, "aps_analysis_finished", {"aps_files": len(result.data)})
 
     def on_run_spv(self, event):
         if self.analysis_running:
@@ -951,6 +961,7 @@ class ApsAnalysisPanel(wx.Panel):
         self.update_analysis_buttons()
         self.notebook.SetSelection(3)
         self.log("Starting SPV analysis...")
+        log_usage_event(self, "spv_analysis_started", {"spv_files": len(self.spv_paths)})
         threading.Thread(target=self.spv_worker, args=(settings,), daemon=True).start()
 
     def spv_worker(self, settings):
@@ -970,6 +981,7 @@ class ApsAnalysisPanel(wx.Panel):
         for item in result.data:
             self.log(f"SPV {item.name}: background={item.bg_cpd:.4g} meV.")
         self.log("SPV analysis completed.")
+        log_usage_event(self, "spv_analysis_finished", {"spv_files": len(result.data)})
 
     def draw_aps_results(self, result):
         self.update_aps_preview()
@@ -1003,6 +1015,7 @@ class ApsAnalysisPanel(wx.Panel):
         self.analysis_running = False
         self.update_analysis_buttons()
         self.log(message)
+        log_usage_event(self, "aps_analysis_failed")
         self.show_warning(message)
 
     def update_analysis_buttons(self):
@@ -1028,6 +1041,7 @@ class ApsAnalysisPanel(wx.Panel):
             self.show_warning(str(exc))
             return
         self.log(f"Saved workfunction CSVs: {path1}; {path2}")
+        log_usage_event(self, "aps_workfunction_saved", file_metadata(path1))
 
     def on_save_aps(self, event):
         if self.aps_result is None:
@@ -1046,6 +1060,7 @@ class ApsAnalysisPanel(wx.Panel):
             self.show_warning(str(exc))
             return
         self.log(f"Saved APS CSVs: {path1}; {path2}; {path3}; {path4}")
+        log_usage_event(self, "aps_results_saved", file_metadata(path1))
 
     def on_save_spv(self, event):
         if self.spv_result is None:
@@ -1062,6 +1077,7 @@ class ApsAnalysisPanel(wx.Panel):
             self.show_warning(str(exc))
             return
         self.log(f"Saved SPV CSVs: {path1}; {path2}")
+        log_usage_event(self, "spv_results_saved", file_metadata(path1))
 
     def choose_output_folder(self):
         with wx.DirDialog(self, "Choose output folder", style=wx.DD_DEFAULT_STYLE | wx.DD_DIR_MUST_EXIST) as dialog:

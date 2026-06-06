@@ -1,6 +1,7 @@
 import os
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
@@ -65,6 +66,7 @@ class WorkspaceStateTests(unittest.TestCase):
             self.assertEqual(state["restore_level"], DEFAULT_RESTORE_LEVEL)
             self.assertEqual(state["tabs"], {})
             self.assertEqual(state["parameters"], {})
+            self.assertTrue(state["usage_logging_enabled"])
 
     def test_app_state_round_trips_restore_level_tabs_and_parameters(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -83,6 +85,14 @@ class WorkspaceStateTests(unittest.TestCase):
             self.assertEqual(state["last_workspace"], "Raman")
             self.assertEqual(state["tabs"]["Raman"][0]["selection"], 2)
             self.assertEqual(state["parameters"]["TPC"]["setting_current_mA"], "12")
+
+    def test_usage_logging_enabled_round_trips_false(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "app_state.json"
+
+            save_app_state(path, {"usage_logging_enabled": False})
+
+            self.assertFalse(load_app_state(path)["usage_logging_enabled"])
 
 
 @unittest.skipIf(wx is None, "wxPython is not available")
@@ -212,6 +222,40 @@ class AppStateGuiTests(unittest.TestCase):
 
                 self.assertIn("Raman", frame.workspace_panels)
                 self.assertEqual(frame.active_workspace, "Raman")
+            finally:
+                frame.Destroy()
+
+    def test_idle_preload_builds_afm_analysis_without_switching_tab(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            frame = self.make_frame(Path(tmp) / "app_state.json")
+            try:
+                afm = frame.workspace_panels["AFM/KPFM"]
+                self.assertIsNone(afm.analysis_page)
+                self.assertEqual(afm.notebook.GetSelection(), 0)
+
+                frame.last_user_activity = time.monotonic() - 5
+                frame.run_idle_preload_step()
+
+                self.assertIsNotNone(afm.analysis_page)
+                self.assertEqual(afm.notebook.GetSelection(), 0)
+                self.assertEqual(frame.active_workspace, "AFM/KPFM")
+            finally:
+                frame.Destroy()
+
+    def test_idle_preload_loads_raman_after_active_lazy_pages(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            frame = self.make_frame(Path(tmp) / "app_state.json")
+            try:
+                frame.last_user_activity = time.monotonic() - 5
+                frame.run_idle_preload_step()
+                self.assertNotIn("Raman", frame.workspace_panels)
+
+                frame.last_user_activity = time.monotonic() - 5
+                frame.run_idle_preload_step()
+
+                self.assertIn("Raman", frame.workspace_panels)
+                self.assertEqual(frame.active_workspace, "AFM/KPFM")
+                self.assertFalse(frame.workspace_panels["Raman"].IsShown())
             finally:
                 frame.Destroy()
 
