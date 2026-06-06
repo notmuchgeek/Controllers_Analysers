@@ -8,6 +8,7 @@ from pathlib import Path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
 
 from ca_app.gui.main_frame import (
+    APP_TITLE,
     CaAppFrame,
     DEFAULT_RESTORE_LEVEL,
     DEFAULT_WORKSPACE,
@@ -101,6 +102,7 @@ class AppStateGuiTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             frame = self.make_frame(Path(tmp) / "app_state.json")
             try:
+                self.assertEqual(frame.GetTitle(), APP_TITLE)
                 menu_bar = frame.GetMenuBar()
                 self.assertEqual(menu_bar.GetMenuLabel(0), "&View")
                 self.assertEqual(menu_bar.GetMenuLabel(1), "Restore")
@@ -111,6 +113,31 @@ class AppStateGuiTests(unittest.TestCase):
                 self.assertEqual(frame.restore_level, RESTORE_TAB)
                 self.assertTrue(frame.restore_menu_items[RESTORE_TAB].IsChecked())
             finally:
+                frame.Destroy()
+
+    def test_versions_and_about_use_current_version_text(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            frame = self.make_frame(Path(tmp) / "app_state.json")
+            messages = []
+            original_message_box = wx.MessageBox
+
+            def fake_message_box(message, caption, style, parent):
+                messages.append((message, caption))
+                return wx.OK
+
+            wx.MessageBox = fake_message_box
+            try:
+                frame.on_versions(None)
+                frame.on_about(None)
+
+                versions_message = messages[0][0]
+                about_message = messages[1][0]
+                self.assertIn(APP_TITLE, versions_message)
+                self.assertIn(APP_TITLE, about_message)
+                self.assertNotIn("Other Workspaces", versions_message)
+                self.assertIn("Raman Electrical", versions_message)
+            finally:
+                wx.MessageBox = original_message_box
                 frame.Destroy()
 
     def test_tab_restore_matches_notebooks_by_page_names(self):
@@ -128,6 +155,23 @@ class AppStateGuiTests(unittest.TestCase):
                 self.assertEqual(raman.notebook.GetSelection(), 2)
                 self.assertEqual(raman.insitu_page.insitu_notebook.GetSelection(), 1)
                 self.assertEqual(raman.mapping_page.mapping_notebook.GetSelection(), 0)
+            finally:
+                frame.Destroy()
+
+    def test_tab_restore_matches_raman_electrical_notebook_by_page_names(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            frame = self.make_frame(Path(tmp) / "app_state.json")
+            try:
+                raman = frame.workspace_panels["Raman"]
+                electrical_state = [
+                    {"selection": 3, "pages": ["Baseline", "Mapping", "Insitu EChem", "Electrical"]},
+                    {"selection": 1, "pages": ["Raw data", "V_Gate/V_Drain"]},
+                ]
+
+                frame.apply_panel_tab_state(raman, electrical_state)
+
+                self.assertEqual(raman.notebook.GetSelection(), 3)
+                self.assertEqual(raman.electrical_page.electrical_notebook.GetSelection(), 1)
             finally:
                 frame.Destroy()
 

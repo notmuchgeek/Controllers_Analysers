@@ -8,11 +8,26 @@ from datetime import datetime
 from pathlib import Path
 
 import wx
+import wx.grid as wxgrid
 import numpy as np
 from matplotlib import colormaps
 from matplotlib.backends.backend_wxagg import FigureCanvasWxAgg
 from matplotlib.figure import Figure
 
+from ca_app.core.aps_analysis import dwf_preview_percent_from_slider
+from ca_app.core.raman_electrical import (
+    DEFAULT_PREVIEW_SECONDS,
+    DRAIN_CURRENT_COL,
+    DRAIN_TIME_COL,
+    DRAIN_VOLTAGE_COL,
+    GATE_CURRENT_COL,
+    GATE_TIME_COL,
+    GATE_VOLTAGE_COL,
+    RamanElectricalData,
+    load_electrical_csv,
+    summarize_electrical_data,
+    summary_table_rows,
+)
 from ca_app.core.raman_insitu_echem import (
     DEFAULT_PEAK_WINDOWS,
     DEFAULT_RAMAN_RANGE_MAX_CM1,
@@ -78,7 +93,7 @@ class RamanAnalysisPanel(wx.Panel):
         self.substrate_page = RamanSubstrateBaselinePanel(self.notebook)
         self.insitu_page = RamanInsituEchemPanel(self.notebook)
         self.mapping_page = RamanMappingPanel(self.notebook, self)
-        self.electrical_page = self.build_placeholder_tab("Electrical")
+        self.electrical_page = RamanElectricalPanel(self.notebook)
         self.notebook.AddPage(self.substrate_page, "Baseline")
         self.notebook.AddPage(self.mapping_page, "Mapping")
         self.notebook.AddPage(self.insitu_page, "Insitu EChem")
@@ -107,6 +122,7 @@ class RamanAnalysisPanel(wx.Panel):
             "substrate_baseline": self.substrate_page.collect_app_parameters(),
             "mapping": self.mapping_page.collect_app_parameters(),
             "insitu_echem": self.insitu_page.collect_app_parameters(),
+            "electrical": self.electrical_page.collect_app_parameters(),
         }
 
     def apply_app_parameters(self, params):
@@ -118,6 +134,43 @@ class RamanAnalysisPanel(wx.Panel):
             self.mapping_page.apply_app_parameters(params["mapping"])
         if isinstance(params.get("insitu_echem"), dict):
             self.insitu_page.apply_app_parameters(params["insitu_echem"])
+        if isinstance(params.get("electrical"), dict):
+            self.electrical_page.apply_app_parameters(params["electrical"])
+
+
+def create_readonly_grid(parent):
+    grid = wxgrid.Grid(parent)
+    grid.CreateGrid(0, 0)
+    grid.EnableEditing(False)
+    grid.EnableDragGridSize(False)
+    grid.SetRowLabelSize(44)
+    grid.SetColLabelSize(24)
+    return grid
+
+
+def populate_grid(grid, headers, rows):
+    current_rows = grid.GetNumberRows()
+    current_cols = grid.GetNumberCols()
+    target_rows = len(rows)
+    target_cols = len(headers)
+    if current_rows < target_rows:
+        grid.AppendRows(target_rows - current_rows)
+    elif current_rows > target_rows:
+        grid.DeleteRows(0, current_rows - target_rows)
+    if current_cols < target_cols:
+        grid.AppendCols(target_cols - current_cols)
+    elif current_cols > target_cols:
+        grid.DeleteCols(0, current_cols - target_cols)
+    for col, header in enumerate(headers):
+        grid.SetColLabelValue(col, str(header))
+    for row_index, row in enumerate(rows):
+        for col_index, value in enumerate(row):
+            grid.SetCellValue(row_index, col_index, str(value))
+    grid.AutoSizeColumns(setAsMin=True)
+
+
+def clear_grid(grid, message):
+    populate_grid(grid, ["Preview"], [[message]])
 
 
 class RamanMappingPanel(wx.Panel):
@@ -218,16 +271,10 @@ class RamanMappingPanel(wx.Panel):
         self.mapping_notebook = wx.Notebook(panel)
         self.avg_panel = wx.Panel(self.mapping_notebook)
         avg_sizer = wx.BoxSizer(wx.VERTICAL)
-        self.txt_raw_preview = wx.TextCtrl(
-            self.avg_panel,
-            style=wx.TE_MULTILINE | wx.TE_READONLY | wx.TE_DONTWRAP | wx.TE_RICH2,
-        )
-        self.txt_avg_preview = wx.TextCtrl(
-            self.avg_panel,
-            style=wx.TE_MULTILINE | wx.TE_READONLY | wx.TE_DONTWRAP | wx.TE_RICH2,
-        )
-        avg_sizer.Add(self.txt_raw_preview, 1, wx.EXPAND | wx.ALL, 6)
-        avg_sizer.Add(self.txt_avg_preview, 1, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 6)
+        self.grid_raw_preview = create_readonly_grid(self.avg_panel)
+        self.grid_avg_preview = create_readonly_grid(self.avg_panel)
+        avg_sizer.Add(self.grid_raw_preview, 1, wx.EXPAND | wx.ALL, 6)
+        avg_sizer.Add(self.grid_avg_preview, 1, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 6)
         self.avg_panel.SetSizer(avg_sizer)
         self.mapping_notebook.AddPage(self.avg_panel, "Avg./Norm.")
 
@@ -461,16 +508,12 @@ class RamanMappingPanel(wx.Panel):
         headers, rows = build_unstacked_table(self.dataset)
         preview_rows = rows[:10]
         width = min(len(headers), 8)
-        raw_lines = ["\t".join(headers[:width])]
-        for row in preview_rows:
-            raw_lines.append("\t".join(f"{value:.6g}" for value in row[:width]))
         avg_headers = ["Wavenumber", "Averaged Intensity", "Normalised Intensity"]
         avg_indexes = [0, len(headers) - 2, len(headers) - 1]
-        avg_lines = ["\t".join(avg_headers)]
-        for row in preview_rows:
-            avg_lines.append("\t".join(f"{row[index]:.6g}" for index in avg_indexes))
-        self.txt_raw_preview.SetValue("\n".join(raw_lines))
-        self.txt_avg_preview.SetValue("\n".join(avg_lines))
+        raw_rows = [[f"{value:.6g}" for value in row[:width]] for row in preview_rows]
+        avg_rows = [[f"{row[index]:.6g}" for index in avg_indexes] for row in preview_rows]
+        populate_grid(self.grid_raw_preview, headers[:width], raw_rows)
+        populate_grid(self.grid_avg_preview, avg_headers, avg_rows)
 
     def draw_raw_preview(self):
         self.figure_raw.clear()
@@ -558,8 +601,8 @@ class RamanMappingPanel(wx.Panel):
         return str(sequence)
 
     def clear_previews(self):
-        self.txt_raw_preview.SetValue("Load a Raman Mapping WDF/TXT file to preview the raw unstacked table.")
-        self.txt_avg_preview.SetValue("Average and normalised intensity preview will appear here.")
+        clear_grid(self.grid_raw_preview, "Load a Raman Mapping WDF/TXT file to preview the raw unstacked table.")
+        clear_grid(self.grid_avg_preview, "Average and normalised intensity preview will appear here.")
         for figure, canvas, message in [
             (self.figure_raw, self.canvas_raw, "Load a Raman Mapping file to preview all raw spectra."),
             (self.figure_location, self.canvas_location, "Load a Raman Mapping file to preview mapping locations."),
@@ -638,6 +681,468 @@ class RamanMappingPanel(wx.Panel):
         self.log_box.AppendText(f"[{stamp}] {message}\n")
 
 
+class RamanElectricalPanel(wx.Panel):
+    RAW_TRACE_LINEWIDTH = 0.3
+    RAW_TRACE_LINEWIDTH_MIN = 0.25
+    RAW_TRACE_LINEWIDTH_MAX = 1.5
+
+    def __init__(self, parent):
+        super().__init__(parent)
+        self.raw_path = ""
+        self.data: RamanElectricalData | None = None
+        self.summary = None
+        self.preview_call = None
+        self._updating_controls = False
+        self.build_ui()
+
+    def build_ui(self):
+        root = wx.BoxSizer(wx.HORIZONTAL)
+        root.Add(self.build_left_panel(), 0, wx.EXPAND | wx.ALL, 8)
+        root.Add(self.build_right_panel(), 1, wx.EXPAND | wx.TOP | wx.RIGHT | wx.BOTTOM, 8)
+        self.SetSizer(root)
+
+    def build_left_panel(self):
+        scrolled = wx.ScrolledWindow(self, style=wx.VSCROLL)
+        scrolled.SetScrollRate(0, 20)
+        scrolled.SetMinSize((520, -1))
+        sizer = wx.BoxSizer(wx.VERTICAL)
+
+        load_box = wx.StaticBoxSizer(wx.VERTICAL, scrolled, "Electrical")
+        self.btn_load_csv = wx.Button(scrolled, label="Load csv")
+        self.lbl_electrical_file = wx.TextCtrl(
+            scrolled,
+            value="No Electrical CSV loaded",
+            style=wx.TE_READONLY,
+        )
+        self.btn_load_csv.Bind(wx.EVT_BUTTON, self.on_load_file)
+        load_box.Add(self.add_load_row(self.btn_load_csv, self.lbl_electrical_file), 0, wx.EXPAND | wx.ALL, 5)
+        raw_preview_grid = wx.FlexGridSizer(rows=1, cols=4, vgap=6, hgap=6)
+        raw_preview_grid.AddGrowableCol(1, 1)
+        raw_preview_grid.AddGrowableCol(2, 2)
+        self.tc_raw_preview_s = wx.TextCtrl(scrolled, value=f"{DEFAULT_PREVIEW_SECONDS:g}")
+        self.slider_raw_preview = wx.Slider(scrolled, value=0, minValue=0, maxValue=100)
+        self.lbl_raw_preview_range = wx.StaticText(scrolled, label="first 1.0 s")
+        self.lbl_raw_preview_range.SetMinSize((90, -1))
+        self.add_preview_row(
+            raw_preview_grid,
+            scrolled,
+            "Raw data / s",
+            self.tc_raw_preview_s,
+            self.slider_raw_preview,
+            self.lbl_raw_preview_range,
+        )
+        load_box.Add(raw_preview_grid, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 5)
+        sizer.Add(load_box, 0, wx.EXPAND | wx.ALL, 5)
+
+        preview_box = wx.StaticBoxSizer(wx.VERTICAL, scrolled, "Preview")
+        preview_grid = wx.FlexGridSizer(rows=2, cols=4, vgap=6, hgap=6)
+        preview_grid.AddGrowableCol(1, 1)
+        preview_grid.AddGrowableCol(2, 2)
+        self.tc_vg_preview_s = wx.TextCtrl(scrolled, value=f"{DEFAULT_PREVIEW_SECONDS:g}")
+        self.tc_vd_preview_s = wx.TextCtrl(scrolled, value=f"{DEFAULT_PREVIEW_SECONDS:g}")
+        self.slider_vg_preview = wx.Slider(scrolled, value=0, minValue=0, maxValue=100)
+        self.slider_vd_preview = wx.Slider(scrolled, value=0, minValue=0, maxValue=100)
+        self.lbl_vg_preview_range = wx.StaticText(scrolled, label="first 1.0 s")
+        self.lbl_vd_preview_range = wx.StaticText(scrolled, label="first 1.0 s")
+        self.lbl_vg_preview_range.SetMinSize((90, -1))
+        self.lbl_vd_preview_range.SetMinSize((90, -1))
+        self.add_preview_row(
+            preview_grid,
+            scrolled,
+            "V_Gate / s",
+            self.tc_vg_preview_s,
+            self.slider_vg_preview,
+            self.lbl_vg_preview_range,
+        )
+        self.add_preview_row(
+            preview_grid,
+            scrolled,
+            "V_Drain / s",
+            self.tc_vd_preview_s,
+            self.slider_vd_preview,
+            self.lbl_vd_preview_range,
+        )
+        preview_box.Add(preview_grid, 0, wx.EXPAND | wx.ALL, 5)
+        sizer.Add(preview_box, 0, wx.EXPAND | wx.ALL, 5)
+
+        for ctrl in [self.tc_raw_preview_s, self.tc_vg_preview_s, self.tc_vd_preview_s]:
+            ctrl.Bind(wx.EVT_TEXT, self.on_preview_text_changed)
+        self.slider_raw_preview.Bind(wx.EVT_SLIDER, self.on_preview_slider)
+        self.slider_vg_preview.Bind(wx.EVT_SLIDER, self.on_preview_slider)
+        self.slider_vd_preview.Bind(wx.EVT_SLIDER, self.on_preview_slider)
+
+        scrolled.SetSizer(sizer)
+        return scrolled
+
+    def build_right_panel(self):
+        panel = wx.Panel(self)
+        sizer = wx.BoxSizer(wx.VERTICAL)
+        self.electrical_notebook = wx.Notebook(panel)
+        self.figure_electrical_raw, self.canvas_electrical_raw = self.add_figure_page("Raw data")
+        self.figure_vgvd, self.canvas_vgvd, self.grid_summary = self.add_vgvd_page("V_Gate/V_Drain")
+        sizer.Add(self.electrical_notebook, 1, wx.EXPAND)
+
+        log_box = wx.StaticBoxSizer(wx.VERTICAL, panel, "Electrical log")
+        self.log_box = wx.TextCtrl(panel, style=wx.TE_MULTILINE | wx.TE_READONLY | wx.TE_RICH2)
+        self.log_box.SetMinSize((-1, 105))
+        log_box.Add(self.log_box, 0, wx.EXPAND | wx.ALL, 6)
+        sizer.Add(log_box, 0, wx.EXPAND | wx.TOP, 6)
+
+        panel.SetSizer(sizer)
+        self.clear_previews()
+        return panel
+
+    def add_figure_page(self, title):
+        panel = wx.Panel(self.electrical_notebook)
+        sizer = wx.BoxSizer(wx.VERTICAL)
+        figure = Figure(figsize=(8, 6))
+        canvas = FigureCanvasWxAgg(panel, -1, figure)
+        sizer.Add(canvas, 1, wx.EXPAND | wx.ALL, 8)
+        panel.SetSizer(sizer)
+        self.electrical_notebook.AddPage(panel, title)
+        return figure, canvas
+
+    def add_vgvd_page(self, title):
+        panel = wx.Panel(self.electrical_notebook)
+        sizer = wx.BoxSizer(wx.VERTICAL)
+        figure = Figure(figsize=(8, 4.8))
+        canvas = FigureCanvasWxAgg(panel, -1, figure)
+        grid = create_readonly_grid(panel)
+        grid.SetMinSize((-1, 150))
+        sizer.Add(canvas, 1, wx.EXPAND | wx.ALL, 8)
+        sizer.Add(grid, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 8)
+        panel.SetSizer(sizer)
+        self.electrical_notebook.AddPage(panel, title)
+        return figure, canvas, grid
+
+    @staticmethod
+    def add_load_row(button, label):
+        button.SetMinSize((135, -1))
+        row = wx.BoxSizer(wx.HORIZONTAL)
+        row.Add(button, 0, wx.RIGHT, 6)
+        row.Add(label, 1, wx.ALIGN_CENTER_VERTICAL)
+        return row
+
+    @staticmethod
+    def add_preview_row(grid, parent, label, ctrl, slider, range_label):
+        grid.Add(wx.StaticText(parent, label=label), 0, wx.ALIGN_CENTER_VERTICAL)
+        grid.Add(ctrl, 0, wx.EXPAND | wx.ALIGN_CENTER_VERTICAL)
+        grid.Add(slider, 0, wx.EXPAND | wx.ALIGN_CENTER_VERTICAL)
+        grid.Add(range_label, 0, wx.ALIGN_CENTER_VERTICAL)
+
+    def collect_app_parameters(self):
+        return {
+            "raw_path": self.raw_path,
+            "raw_preview_s": self.tc_raw_preview_s.GetValue(),
+            "vg_preview_s": self.tc_vg_preview_s.GetValue(),
+            "vd_preview_s": self.tc_vd_preview_s.GetValue(),
+        }
+
+    def apply_app_parameters(self, params):
+        if not isinstance(params, dict):
+            return
+        raw_path = str(params.get("raw_path", "") or "")
+        if raw_path:
+            try:
+                self.load_data(raw_path)
+            except Exception as exc:
+                self.raw_path = raw_path
+                self.set_loaded_file_display(raw_path)
+                self.log(f"Could not restore Electrical CSV: {exc}")
+        self.tc_raw_preview_s.SetValue(str(params.get("raw_preview_s", self.tc_raw_preview_s.GetValue())))
+        self.tc_vg_preview_s.SetValue(str(params.get("vg_preview_s", self.tc_vg_preview_s.GetValue())))
+        self.tc_vd_preview_s.SetValue(str(params.get("vd_preview_s", self.tc_vd_preview_s.GetValue())))
+        self.update_preview_labels()
+        self.schedule_preview(delay_ms=50)
+
+    def on_load_file(self, event):
+        with wx.FileDialog(
+            self,
+            "Load Electrical CSV file",
+            wildcard="CSV files (*.csv)|*.csv|All files (*.*)|*.*",
+            style=wx.FD_OPEN | wx.FD_FILE_MUST_EXIST,
+        ) as dialog:
+            if dialog.ShowModal() != wx.ID_OK:
+                return
+            path = dialog.GetPath()
+        try:
+            self.load_data(path)
+        except Exception as exc:
+            self.show_warning(str(exc))
+
+    def load_data(self, path):
+        self.data = load_electrical_csv(path)
+        self.summary = summarize_electrical_data(self.data)
+        self.raw_path = str(path)
+        self.set_loaded_file_display(path)
+        self.update_previews()
+        self.electrical_notebook.SetSelection(1)
+        self.log(
+            f"Loaded {Path(path).name}: {self.data.n_rows} rows, "
+            f"total time {self.data.total_time_s:.6g} s."
+        )
+        if self.data.missing_columns:
+            self.log("Missing exact column(s): " + ", ".join(self.data.missing_columns))
+
+    def set_loaded_file_display(self, path):
+        self.lbl_electrical_file.SetValue(Path(path).name)
+        self.lbl_electrical_file.SetToolTip(str(path))
+
+    def on_preview_text_changed(self, event):
+        event.Skip()
+        if self._updating_controls:
+            return
+        self.update_preview_labels()
+        self.schedule_preview()
+
+    def on_preview_slider(self, event):
+        event.Skip()
+        slider = event.GetEventObject()
+        if slider is self.slider_raw_preview:
+            ctrl = self.tc_raw_preview_s
+            channel = "raw"
+        elif slider is self.slider_vg_preview:
+            ctrl = self.tc_vg_preview_s
+            channel = "vg"
+        else:
+            ctrl = self.tc_vd_preview_s
+            channel = "vd"
+        seconds = self.seconds_from_slider(slider, channel)
+        self._updating_controls = True
+        try:
+            ctrl.SetValue(self.format_preview_seconds(seconds))
+        finally:
+            self._updating_controls = False
+        self.update_preview_labels()
+        self.schedule_preview(delay_ms=50)
+
+    def seconds_from_slider(self, slider, channel):
+        total = self.channel_total_seconds(channel)
+        if total <= 0:
+            return DEFAULT_PREVIEW_SECONDS
+        percent = dwf_preview_percent_from_slider(slider.GetValue())
+        return max(total * percent / 100.0, 1.0 / 100.0)
+
+    def channel_total_seconds(self, channel):
+        if self.data is None:
+            return DEFAULT_PREVIEW_SECONDS
+        if channel == "raw":
+            spans = []
+            for time_name in [GATE_TIME_COL, DRAIN_TIME_COL]:
+                values = self.data.column(time_name)
+                if values is None:
+                    continue
+                clean = np.asarray(values, dtype=float)
+                clean = clean[np.isfinite(clean)]
+                if clean.size > 0:
+                    spans.append(float(np.max(clean) - np.min(clean)))
+            if spans:
+                return max(max(spans), self.data.total_time_s)
+            return self.data.total_time_s
+        time_name = GATE_TIME_COL if channel == "vg" else DRAIN_TIME_COL
+        values = self.data.column(time_name)
+        if values is None:
+            return self.data.total_time_s
+        clean = np.asarray(values, dtype=float)
+        clean = clean[np.isfinite(clean)]
+        if clean.size == 0:
+            return self.data.total_time_s
+        span = float(np.max(clean) - np.min(clean))
+        return span if span > 0 else self.data.total_time_s
+
+    def update_preview_labels(self):
+        self.lbl_raw_preview_range.SetLabel(f"first {self.format_preview_seconds(self.preview_seconds('raw'))} s")
+        self.lbl_vg_preview_range.SetLabel(f"first {self.format_preview_seconds(self.preview_seconds('vg'))} s")
+        self.lbl_vd_preview_range.SetLabel(f"first {self.format_preview_seconds(self.preview_seconds('vd'))} s")
+
+    def schedule_preview(self, delay_ms=250):
+        if self.preview_call is not None and self.preview_call.IsRunning():
+            self.preview_call.Stop()
+        self.preview_call = wx.CallLater(delay_ms, self.update_previews)
+
+    def preview_seconds(self, channel):
+        if channel == "raw":
+            ctrl = self.tc_raw_preview_s
+        elif channel == "vg":
+            ctrl = self.tc_vg_preview_s
+        else:
+            ctrl = self.tc_vd_preview_s
+        text = ctrl.GetValue().strip()
+        if not text:
+            return DEFAULT_PREVIEW_SECONDS
+        try:
+            value = float(text)
+        except ValueError:
+            return DEFAULT_PREVIEW_SECONDS
+        if not np.isfinite(value) or value <= 0:
+            return DEFAULT_PREVIEW_SECONDS
+        return value
+
+    @staticmethod
+    def format_preview_seconds(value):
+        try:
+            numeric = float(value)
+        except (TypeError, ValueError):
+            numeric = DEFAULT_PREVIEW_SECONDS
+        if not np.isfinite(numeric) or numeric <= 0:
+            numeric = DEFAULT_PREVIEW_SECONDS
+        return f"{numeric:.1f}"
+
+    def update_previews(self):
+        if self.data is None:
+            self.clear_previews()
+            return
+        try:
+            self.update_preview_labels()
+            self.draw_raw_preview()
+            self.draw_vgvd_preview()
+            self.draw_summary_table()
+        except Exception as exc:
+            self.log(f"Preview update warning: {exc}")
+
+    def draw_raw_preview(self):
+        self.figure_electrical_raw.clear()
+        axes = [
+            self.figure_electrical_raw.add_subplot(221),
+            self.figure_electrical_raw.add_subplot(222),
+            self.figure_electrical_raw.add_subplot(223),
+            self.figure_electrical_raw.add_subplot(224),
+        ]
+        plots = [
+            (GATE_TIME_COL, GATE_VOLTAGE_COL, "Gate V", r"$V_{Gate}$ / V", "green"),
+            (DRAIN_TIME_COL, DRAIN_VOLTAGE_COL, "Drain V", r"$V_{Drain}$ / V", "red"),
+            (GATE_TIME_COL, GATE_CURRENT_COL, "Gate I", r"$I_{Gate}$ / A", "orange"),
+            (DRAIN_TIME_COL, DRAIN_CURRENT_COL, "Drain I", r"$I_{Drain}$ / A", "blue"),
+        ]
+        raw_preview_s = self.preview_seconds("raw")
+        raw_linewidth = self.raw_trace_linewidth(raw_preview_s)
+        for ax, (time_col, signal_col, title, ylabel, color) in zip(axes, plots):
+            self.plot_signal(ax, time_col, signal_col, title, ylabel, color, raw_preview_s, raw_linewidth)
+        self.figure_electrical_raw.tight_layout(pad=1.2)
+        self.canvas_electrical_raw.draw()
+
+    @classmethod
+    def raw_trace_linewidth(cls, preview_s):
+        try:
+            seconds = float(preview_s)
+        except (TypeError, ValueError):
+            return cls.RAW_TRACE_LINEWIDTH
+        if not np.isfinite(seconds) or seconds <= 0:
+            return cls.RAW_TRACE_LINEWIDTH
+        linewidth = cls.RAW_TRACE_LINEWIDTH_MAX / np.sqrt(max(seconds, 0.1))
+        return float(min(cls.RAW_TRACE_LINEWIDTH_MAX, max(cls.RAW_TRACE_LINEWIDTH_MIN, linewidth)))
+
+    def plot_signal(self, ax, time_col, signal_col, title, ylabel, color, preview_s, linewidth):
+        time_values = self.data.column(time_col) if self.data is not None else None
+        signal_values = self.data.column(signal_col) if self.data is not None else None
+        if time_values is None or signal_values is None:
+            ax.text(0.5, 0.5, "Column missing", ha="center", va="center", transform=ax.transAxes)
+        else:
+            valid = np.isfinite(time_values) & np.isfinite(signal_values)
+            if np.any(valid):
+                start = float(np.min(time_values[valid]))
+                valid = valid & (time_values <= start + float(preview_s))
+            ax.plot(time_values[valid], signal_values[valid], color=color, linewidth=linewidth)
+        ax.set_title(title)
+        ax.set_xlabel("Time / s")
+        ax.set_ylabel(ylabel)
+        ax.grid(True, alpha=0.3)
+
+    def draw_vgvd_preview(self):
+        self.figure_vgvd.clear()
+        ax_left = self.figure_vgvd.add_subplot(111)
+        ax_right = ax_left.twinx()
+        has_vg = self.plot_voltage_preview(
+            ax_left,
+            GATE_TIME_COL,
+            GATE_VOLTAGE_COL,
+            self.preview_seconds("vg"),
+            r"$V_{Gate}$",
+            "green",
+        )
+        has_vd = self.plot_voltage_preview(
+            ax_right,
+            DRAIN_TIME_COL,
+            DRAIN_VOLTAGE_COL,
+            self.preview_seconds("vd"),
+            r"$V_{Drain}$",
+            "red",
+        )
+        if not has_vg:
+            ax_left.text(0.5, 0.6, "Gate Voltage column missing", ha="center", va="center", transform=ax_left.transAxes)
+        if not has_vd:
+            ax_right.text(0.5, 0.4, "Drain Voltage column missing", ha="center", va="center", transform=ax_right.transAxes)
+        ax_left.set_xlabel("Time / s")
+        ax_left.set_ylabel(r"$V_{Gate}$ / V", color="green")
+        ax_left.tick_params(axis="y", labelcolor="green")
+        ax_left.grid(True, alpha=0.3)
+        ax_right.set_ylabel(r"$V_{Drain}$ / V", color="red")
+        ax_right.tick_params(axis="y", labelcolor="red")
+        ax_left.set_title(
+            "V_Gate first "
+            f"{self.format_preview_seconds(self.preview_seconds('vg'))} s and "
+            "V_Drain first "
+            f"{self.format_preview_seconds(self.preview_seconds('vd'))} s"
+        )
+        lines_left, labels_left = ax_left.get_legend_handles_labels()
+        lines_right, labels_right = ax_right.get_legend_handles_labels()
+        if lines_left or lines_right:
+            ax_left.legend(lines_left + lines_right, labels_left + labels_right, loc="best")
+        self.figure_vgvd.tight_layout(pad=1.2)
+        self.canvas_vgvd.draw()
+
+    def plot_voltage_preview(self, ax, time_col, voltage_col, preview_s, label, color):
+        time_values = self.data.column(time_col) if self.data is not None else None
+        voltage_values = self.data.column(voltage_col) if self.data is not None else None
+        if time_values is None or voltage_values is None:
+            return False
+        valid = np.isfinite(time_values) & np.isfinite(voltage_values)
+        if not np.any(valid):
+            return False
+        t = time_values[valid]
+        v = voltage_values[valid]
+        start = float(np.min(t))
+        mask = t <= start + float(preview_s)
+        ax.plot(t[mask], v[mask], color=color, linewidth=1.5, label=label)
+        return True
+
+    def draw_summary_table(self):
+        if self.summary is None:
+            clear_grid(self.grid_summary, "Load an Electrical CSV file to preview V_Gate/V_Drain summary.")
+            return
+        headers = ["Item", "const/pulse", "const value / V", "n_pulse", "t_initial / s", "t_duration / s"]
+        rows = []
+        for row in summary_table_rows(self.summary):
+            if len(row) == 2:
+                rows.append([row[0], row[1], "-", "-", "-", "-"])
+            else:
+                rows.append(row)
+        populate_grid(self.grid_summary, headers, rows)
+
+    def clear_previews(self):
+        for figure, canvas, message in [
+            (
+                self.figure_electrical_raw,
+                self.canvas_electrical_raw,
+                "Load an Electrical CSV file to preview V_Gate, I_Gate, V_Drain, and I_Drain.",
+            ),
+            (self.figure_vgvd, self.canvas_vgvd, "Load an Electrical CSV file to preview V_Gate/V_Drain."),
+        ]:
+            figure.clear()
+            ax = figure.add_subplot(111)
+            ax.text(0.5, 0.5, message, ha="center", va="center", transform=ax.transAxes)
+            ax.set_axis_off()
+            canvas.draw()
+        clear_grid(self.grid_summary, "Electrical summary will appear here.")
+
+    def show_warning(self, message):
+        wx.MessageBox(message, "Electrical warning", wx.OK | wx.ICON_WARNING, self)
+
+    def log(self, message):
+        stamp = datetime.now().strftime("%H:%M:%S")
+        self.log_box.AppendText(f"[{stamp}] {message}\n")
+
+
 class RamanInsituEchemPanel(wx.Panel):
     def __init__(self, parent):
         super().__init__(parent)
@@ -675,7 +1180,7 @@ class RamanInsituEchemPanel(wx.Panel):
         sizer.Add(params_box, 0, wx.EXPAND | wx.ALL, 5)
 
         load_box = wx.StaticBoxSizer(wx.VERTICAL, scrolled, "Insitu EChem")
-        self.btn_load_insitu = wx.Button(scrolled, label="Load file")
+        self.btn_load_insitu = wx.Button(scrolled, label="Load wdf/txt")
         self.lbl_insitu_file = wx.TextCtrl(scrolled, value="No Raman sequence file loaded", style=wx.TE_READONLY)
         self.lbl_insitu_file.SetMinSize((260, -1))
         self.btn_load_insitu.Bind(wx.EVT_BUTTON, self.on_load_file)
@@ -1390,7 +1895,7 @@ class RamanSubstrateBaselinePanel(wx.Panel):
         scrolled.SetMinSize((520, -1))
         box = wx.StaticBoxSizer(wx.VERTICAL, scrolled, "Substrate Baseline")
 
-        self.btn_load_raw = wx.Button(scrolled, label="Load Raman file")
+        self.btn_load_raw = wx.Button(scrolled, label="Load txt")
         self.lbl_raw = wx.StaticText(scrolled, label="No Raman file loaded")
         self.btn_load_raw.Bind(wx.EVT_BUTTON, self.on_load_raw)
         box.Add(self.add_load_row(self.btn_load_raw, self.lbl_raw), 0, wx.EXPAND | wx.ALL, 5)
@@ -1493,7 +1998,7 @@ class RamanSubstrateBaselinePanel(wx.Panel):
         return row
 
     def on_load_raw(self, event):
-        paths = self.open_txt_file("Load Raman file")
+        paths = self.open_txt_file("Load Raman TXT file")
         if not paths:
             return
         path = paths[0]
@@ -1893,14 +2398,4 @@ class RamanSubstrateBaselinePanel(wx.Panel):
     def log(self, message):
         stamp = datetime.now().strftime("%H:%M:%S")
         self.log_box.AppendText(f"[{stamp}] {message}\n")
-
-
-
-
-
-
-
-
-
-
 

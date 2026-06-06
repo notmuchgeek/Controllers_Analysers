@@ -15,6 +15,8 @@ from ca_app.gui.panels.tpc_panel import TpcLaserDiodePanel
 
 WORKSPACE_NAMES = ("AFM/KPFM", "APS", "TPC", "Raman")
 DEFAULT_WORKSPACE = "AFM/KPFM"
+APP_VERSION = "v16.1.260606.2115"
+APP_TITLE = f"Controller & Analysers {APP_VERSION}"
 STATE_FILENAME = "app_state.json"
 RESTORE_VIEW = "view"
 RESTORE_TAB = "tab"
@@ -72,7 +74,7 @@ class CaAppFrame(wx.Frame):
     """Top-level workspace shell."""
 
     def __init__(self):
-        super().__init__(None, title="Controllers & Analysers", size=(1680, 940))
+        super().__init__(None, title=APP_TITLE, size=(1680, 940))
         self.workspace_panels = {}
         self.view_menu_items = {}
         self.restore_menu_items = {}
@@ -350,46 +352,38 @@ class CaAppFrame(wx.Frame):
 
     def on_versions(self, event):
         message = (
-            "Controllers & Analysers\n"
-            "Version: 0.14.0\n\n"
+            f"{APP_TITLE}\n\n"
             "Restore\n"
             "  - View: remember the last opened workspace\n"
             "  - Tab: remember workspace and selected notebook tabs\n"
             "  - Parameters: remember workspace, tabs, loaded files, typed values, and selections\n\n"
-            "AFM/KPFM\n"
-            "  Controller\n"
-            "    - Keithley current-source control over serial communication\n"
-            "    - Current mode and intensity mode\n"
-            "    - Quick Test ON/OFF source control\n"
-            "    - Recurrent and Step sequence control\n"
-            "    - Function control overlay for ON-stage profiles\n"
-            "    - Current-intensity calibration CSV loading and fitting\n"
-            "    - Source, function, calibration, and live-voltage previews\n"
-            "    - Save/load parameters and source CSV export\n\n"
-            "  Analysis\n"
-            "    - CPD TIFF/PNG loading with TIFF metadata/raw-tag extraction\n"
-            "    - CPD/Energy image previews, robust color scaling, selectable colormaps, and row/time profiles\n"
-            "    - Illuminated-region comparison, mask previews, masked histograms, and HOPG Gaussian peak fitting\n"
-            "    - Save/load parameters and app-state restore support\n\n"
-            "Other Workspaces\n"
-            "  APS\n"
-            "    - Workfunction / DWF calibration analysis\n"
-            "    - Reference APS and reference DWF loading\n"
-            "    - APS spectrum HOMO and DOS analysis\n"
-            "    - Raw-data previews with fitting/statistic regions\n"
-            "    - Origin-style CSV export\n\n"
-            "  TPC\n"
-            "    - Laser diode red/green selection\n"
-            "    - LD current limit enforcement\n"
-            "    - Keithley current-source ON/OFF control\n"
-            "    - Measured voltage/current readback\n"
-            "    - Legacy LD output-power calculation\n\n"
-            "  Raman\n"
-            "    - Baseline analysis with asPLS, drPLS, and Polynomial/backcor fitting\n"
-            "    - Optional WiRE software analysed result overlay\n"
-            "    - Mapping WDF/TXT loading, unstacking, Origin TXT export, selected-sequence transfer, and WDF image/location preview\n"
-            "    - Insitu EChem TXT/WDF sequence analysis for peak positions, intensities, and normalized ratios\n"
-            "    - Electrical tab reserved for a future Raman tool"
+            "AFM/KPFM Controller\n"
+            "  - Keithley current-source control over serial communication\n"
+            "  - Current or calibrated-intensity source mode\n"
+            "  - Quick Test, Recurrent, Step, and Function ON-stage control\n"
+            "  - Source, function, calibration, and live-voltage previews\n"
+            "  - Parameter JSON, source CSV, and Keithley run-data CSV export\n\n"
+            "AFM/KPFM Analysis\n"
+            "  - CPD TIFF/PNG loading and CPD/Energy image preview\n"
+            "  - Illuminated-region, mask, histogram, row/time profile, and HOPG fit tools\n\n"
+            "APS\n"
+            "  - Workfunction, DWF, APS HOMO, DOS, and SPV analysis\n"
+            "  - Raw-data previews with fitting/statistic regions and CSV export\n\n"
+            "TPC\n"
+            "  - Red/green laser-diode selection and current-limit enforcement\n"
+            "  - Keithley current-source ON/OFF control with readback\n\n"
+            "Raman Baseline\n"
+            "  - TXT loading with asPLS, drPLS, and Polynomial/backcor baseline fitting\n"
+            "  - Optional WiRE analysed result overlay and corrected TXT export\n\n"
+            "Raman Mapping\n"
+            "  - WDF/TXT loading, mapping unstacking, Avg./Norm. table preview, and raw/location/selected plots\n"
+            "  - Origin TXT export, selected-sequence TXT export, and in-memory transfer to Insitu EChem\n\n"
+            "Raman Insitu EChem\n"
+            "  - TXT/WDF sequence loading with sequence/time x-axis previews\n"
+            "  - Peak position, intensity, and normalized-ratio analysis with PNG/CSV export\n\n"
+            "Raman Electrical\n"
+            "  - Electrical CSV loading for V_Gate, V_Drain, I_Gate, and I_Drain previews\n"
+            "  - V_Gate/V_Drain pulse classification and summary table"
         )
         wx.MessageBox(message, "Versions", wx.OK | wx.ICON_INFORMATION, self)
 
@@ -406,11 +400,12 @@ class CaAppFrame(wx.Frame):
 
     def on_about(self, event):
         message = (
-            "Controllers & Analysers v14 is a wxPython workspace for experiment control "
+            f"{APP_TITLE} is a wxPython workspace for experiment control "
             "and analysis workflows.\n\n"
             "Current tools include AFM/KPFM Keithley control and image analysis, APS/DWF/SPV "
             "analysis, TPC laser-diode control, Raman substrate-baseline correction, Raman "
-            "Mapping WDF/TXT processing, and Raman Insitu EChem sequence analysis.\n\n"
+            "Mapping WDF/TXT processing, Raman Insitu EChem sequence analysis, and Raman "
+            "Electrical CSV preview/classification.\n\n"
             "The Restore menu controls whether the app remembers View, Tab, or Parameters "
             "between launches."
         )

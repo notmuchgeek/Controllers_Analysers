@@ -4,7 +4,22 @@ This file is the source of truth for coding agents working inside the `ca_app` p
 
 ## 1. Active Project
 
-The active runnable application is the packaged v14 application:
+The active runnable application is the packaged v16.1.260606.2115 application:
+
+Version format:
+
+```text
+v<major>.<minor>.<YYMMDD>.<HHMM>
+```
+
+For `v16.1.260606.2115`:
+
+- `v16` is the larger version change.
+- `.1` is the smaller version number within v16.
+- `260606` is the date of the change in YYMMDD format.
+- `2115` is the exact 24-hour time when Codex, the coding agent, changed code or project files.
+
+Whenever Codex implements changes from a plan, increment the smaller version number, update the date, update the exact 24-hour time, and propagate the new version to the program window title, About/Versions text, package metadata, and project documentation.
 
 ```text
 ca_app/
@@ -24,11 +39,20 @@ The top-level GUI shell is:
 src/ca_app/gui/main_frame.py
 ```
 
+Human and coding-agent documentation entry points:
+
+```text
+README.md
+README.zh-CN.md
+docs/en/index.md
+docs/zh-CN/index.md
+```
+
 The AFM/KPFM controller behavior was migrated from the v10 reconstruction and should remain hardware-compatible unless explicitly changed.
 
 ## 2. Project Purpose
 
-Controllers & Analysers is a wxPython GUI for experiment control and analysis workflows. It currently includes AFM/KPFM Keithley control, AFM/KPFM CPD image analysis, APS/DWF/SPV analysis, TPC laser-diode control, Raman baseline correction, Raman Mapping, Raman Insitu EChem sequence analysis, and reserved workspaces for future tools.
+Controllers & Analysers is a wxPython GUI for experiment control and analysis workflows. It currently includes AFM/KPFM Keithley control, AFM/KPFM CPD image analysis, APS/DWF/SPV analysis, TPC laser-diode control, Raman baseline correction, Raman Mapping, Raman Insitu EChem sequence analysis, and Raman Electrical CSV preview/classification.
 
 The AFM/KPFM controller sources current through a Keithley source meter over RS-232 serial communication. It applies ON/OFF timing patterns, reads measured voltage live, and can control by target optical intensity using a current-intensity calibration CSV.
 
@@ -125,7 +149,7 @@ src/ca_app/gui/panels/aps_panel.py
   APS, DWF, workfunction, DOS, and SPV analysis GUI.
 
 src/ca_app/gui/panels/raman_panel.py
-  Raman notebook with Baseline, Mapping, Insitu EChem, and reserved Electrical tabs.
+  Raman notebook with Baseline, Mapping, Insitu EChem, and Electrical tabs.
 
 src/ca_app/core/raman_mapping.py
   Raman WiRE WDF/TXT loading, mapping unstacking, Origin TXT export,
@@ -138,6 +162,10 @@ src/ca_app/core/raman_baseline.py
 src/ca_app/core/raman_insitu_echem.py
   Raman sequence import, peak-window extraction, peak position/intensity
   summaries, normalized intensity ratios, and CSV export for Insitu EChem.
+
+src/ca_app/core/raman_electrical.py
+  Raman Electrical CSV import, V_Gate/V_Drain pulse classification, preview
+  summary rows, and exact-column parsing for Gate/Drain voltage/current traces.
 
 src/ca_app/gui/panels/tpc_panel.py
   TPC laser-diode control GUI.
@@ -170,7 +198,7 @@ tests/
 
 ## 5. Refactor Rule
 
-The v14 application separates the main shell from independent workspace panels. The AFM/KPFM controller panel still intentionally keeps the tested Keithley runtime behavior together to avoid changing hardware semantics during naming and structure cleanup.
+The v16.1.260606.2115 application separates the main shell from independent workspace panels. The AFM/KPFM controller panel still intentionally keeps the tested Keithley runtime behavior together to avoid changing hardware semantics during naming and structure cleanup.
 
 When refactoring further:
 
@@ -392,6 +420,7 @@ Automatic app-state restore is separate from manual Save Parameters / Load Param
 Important restore-maintenance rule:
 
 - Whenever any new workspace tab, nested preview notebook, or additional function panel is added, double-check `app_state.json` restore behavior.
+- The Raman Electrical tab has its own nested preview notebook; restore tests must cover its selected tab and parameter restore.
 - Tab restore must match notebooks by page names, not just recursive notebook order, because adding a nested notebook can otherwise restore saved selections onto the wrong notebook.
 - Parameter restore must preserve user-typed values after any automatic file reload. Do not reload a file after applying saved fields if the reload resets those fields.
 
@@ -610,9 +639,48 @@ Save buttons:
 
 Each button saves one PNG and one CSV for the corresponding result plot.
 
-The Raman notebook also has a fourth `Electrical` tab. It is intentionally blank/reserved unless explicitly requested.
+## 16. Raman Electrical
 
-## 16. Testing Checklist
+The active Raman Electrical workspace is available from:
+
+```text
+View -> Raman -> Electrical
+```
+
+The Electrical workspace uses the same fixed left/right layout style:
+
+- Left side: Electrical CSV loading, one shared Raw data preview-duration control, and V_Gate/V_Drain preview-duration controls.
+- Right side: preview notebook with `Raw data` and `V_Gate/V_Drain`.
+- Bottom-right: Electrical log.
+
+Input CSV files use exact column names from the measurement program:
+
+```text
+Gate Time,Gate Voltage,Gate Current,Drain Time,Drain Voltage,Drain Current
+```
+
+The loader intentionally requires exact names. If columns are missing, the GUI should report the missing exact columns and show missing-channel messages rather than guessing from filenames or aliases.
+
+Preview behavior:
+
+- `Raw data` shows four figures in this order: Gate V, Drain V, Gate I, Drain I.
+- Raw traces automatically adjust linewidth from the shared `Raw data / s` control: shorter preview windows use wider lines, and longer preview windows use thinner lines so individual pulses remain visible.
+- `V_Gate/V_Drain` shows the first selected seconds of V_Gate and V_Drain on the same figure with two y-axes.
+- Preview controls use typed seconds boxes and uneven sliders. The Electrical section has one shared `Raw data / s` control for all four raw-data plots; the Preview section has separate `V_Gate / s` and `V_Drain / s` controls. Slider-derived displayed values are rounded to 1 decimal place.
+- Figure labels use subscript-style Matplotlib labels for V_Gate, V_Drain, I_Gate, and I_Drain where supported; wx labels use ASCII text such as `V_Gate`.
+
+Summary table rows:
+
+```text
+n_rows
+total time / s
+V_Gate
+V_Drain
+```
+
+For V_Gate and V_Drain, show classification (`const`, `pulse`, `changing`, or `missing`), constant voltage, pulse count, initial pulse time, and pulse duration. If not applicable, show `-`.
+
+## 17. Testing Checklist
 
 After code edits, run:
 

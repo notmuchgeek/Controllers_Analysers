@@ -32,6 +32,14 @@ from ca_app.core.raman_insitu_echem import (
     save_ratio_csv,
     selected_sequence_values,
 )
+from ca_app.core.raman_electrical import (
+    DRAIN_CURRENT_COL,
+    DRAIN_TIME_COL,
+    DRAIN_VOLTAGE_COL,
+    GATE_CURRENT_COL,
+    GATE_TIME_COL,
+    GATE_VOLTAGE_COL,
+)
 
 
 class RamanInsituEchemCoreTests(unittest.TestCase):
@@ -229,6 +237,8 @@ class RamanInsituEchemGuiTests(unittest.TestCase):
                 [panel.notebook.GetPageText(index) for index in range(panel.notebook.GetPageCount())],
                 ["Baseline", "Mapping", "Insitu EChem", "Electrical"],
             )
+            self.assertEqual(panel.substrate_page.btn_load_raw.GetLabel(), "Load txt")
+            self.assertEqual(panel.insitu_page.btn_load_insitu.GetLabel(), "Load wdf/txt")
         finally:
             frame.Destroy()
 
@@ -250,6 +260,8 @@ class RamanInsituEchemGuiTests(unittest.TestCase):
                     [mapping.mapping_notebook.GetPageText(index) for index in range(mapping.mapping_notebook.GetPageCount())],
                     ["Avg./Norm.", "Raw data", "Location", "Selected"],
                 )
+                self.assertEqual(mapping.grid_raw_preview.GetColLabelValue(0), "Wavenumber")
+                self.assertEqual(mapping.grid_avg_preview.GetColLabelValue(1), "Averaged Intensity")
                 self.assertFalse(mapping.cb_raw_legend.IsEnabled())
                 self.assertEqual(len(mapping.figure_raw.axes[0].lines), 4)
 
@@ -262,6 +274,160 @@ class RamanInsituEchemGuiTests(unittest.TestCase):
                 self.assertIsNotNone(mapping.figure_raw.axes[0].get_legend())
             finally:
                 frame.Destroy()
+
+    def test_electrical_load_populates_previews_and_summary(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "electrical.csv"
+            self.write_electrical_csv(path)
+            frame = wx.Frame(None)
+            try:
+                panel = RamanAnalysisPanel(frame)
+                electrical = panel.electrical_page
+
+                electrical.load_data(path)
+
+                self.assertEqual(
+                    [
+                        electrical.electrical_notebook.GetPageText(index)
+                        for index in range(electrical.electrical_notebook.GetPageCount())
+                    ],
+                    ["Raw data", "V_Gate/V_Drain"],
+                )
+                self.assertEqual(electrical.electrical_notebook.GetSelection(), 1)
+                self.assertEqual(len(electrical.figure_electrical_raw.axes), 4)
+                self.assertEqual(
+                    [ax.get_title() for ax in electrical.figure_electrical_raw.axes],
+                    ["Gate V", "Drain V", "Gate I", "Drain I"],
+                )
+                self.assertTrue(
+                    all(
+                        electrical.RAW_TRACE_LINEWIDTH_MIN <= line.get_linewidth() <= electrical.RAW_TRACE_LINEWIDTH_MAX
+                        for ax in electrical.figure_electrical_raw.axes
+                        for line in ax.lines
+                    )
+                )
+                self.assertGreaterEqual(len(electrical.figure_vgvd.axes), 2)
+                self.assertEqual(electrical.grid_summary.GetCellValue(0, 0), "n_rows")
+                self.assertEqual(electrical.grid_summary.GetCellValue(2, 0), "V_Gate")
+                self.assertEqual(electrical.grid_summary.GetCellValue(3, 0), "V_Drain")
+                self.assertEqual(electrical.tc_raw_preview_s.GetValue(), "1")
+                self.assertEqual(electrical.lbl_raw_preview_range.GetLabel(), "first 1.0 s")
+            finally:
+                frame.Destroy()
+
+    def test_electrical_raw_linewidth_decreases_for_longer_preview(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "electrical.csv"
+            self.write_electrical_csv(path, row_count=2000, dt_s=0.1)
+            frame = wx.Frame(None)
+            try:
+                panel = RamanAnalysisPanel(frame)
+                electrical = panel.electrical_page
+                electrical.load_data(path)
+
+                electrical.tc_raw_preview_s.SetValue("1.0")
+                electrical.update_previews()
+                short_width = electrical.figure_electrical_raw.axes[0].lines[0].get_linewidth()
+
+                electrical.tc_raw_preview_s.SetValue("100.0")
+                electrical.update_previews()
+                long_width = electrical.figure_electrical_raw.axes[0].lines[0].get_linewidth()
+
+                self.assertGreater(short_width, long_width)
+                self.assertLessEqual(short_width, electrical.RAW_TRACE_LINEWIDTH_MAX)
+                self.assertGreaterEqual(long_width, electrical.RAW_TRACE_LINEWIDTH_MIN)
+                self.assertEqual(electrical.figure_vgvd.axes[0].lines[0].get_linewidth(), 1.5)
+            finally:
+                frame.Destroy()
+
+    def test_electrical_slider_display_uses_one_decimal_place(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "electrical.csv"
+            self.write_electrical_csv(path, row_count=20, dt_s=0.1)
+            frame = wx.Frame(None)
+            try:
+                panel = RamanAnalysisPanel(frame)
+                electrical = panel.electrical_page
+                electrical.load_data(path)
+
+                for slider, ctrl, label in [
+                    (electrical.slider_raw_preview, electrical.tc_raw_preview_s, electrical.lbl_raw_preview_range),
+                    (electrical.slider_vg_preview, electrical.tc_vg_preview_s, electrical.lbl_vg_preview_range),
+                    (electrical.slider_vd_preview, electrical.tc_vd_preview_s, electrical.lbl_vd_preview_range),
+                ]:
+                    slider.SetValue(70)
+                    event = wx.CommandEvent(wx.EVT_SLIDER.typeId)
+                    event.SetEventObject(slider)
+                    electrical.on_preview_slider(event)
+
+                    self.assertRegex(ctrl.GetValue(), r"^\d+\.\d$")
+                    self.assertIn(ctrl.GetValue(), label.GetLabel())
+            finally:
+                frame.Destroy()
+
+    def test_electrical_raw_preview_seconds_filters_all_raw_axes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "electrical.csv"
+            self.write_electrical_csv(path, row_count=20, dt_s=0.1)
+            frame = wx.Frame(None)
+            try:
+                panel = RamanAnalysisPanel(frame)
+                electrical = panel.electrical_page
+                electrical.load_data(path)
+
+                electrical.tc_raw_preview_s.SetValue("0.5")
+                electrical.update_previews()
+
+                for ax in electrical.figure_electrical_raw.axes:
+                    self.assertEqual(len(ax.lines), 1)
+                    xdata = ax.lines[0].get_xdata()
+                    self.assertEqual(len(xdata), 6)
+                    self.assertLessEqual(float(max(xdata)), 0.5)
+            finally:
+                frame.Destroy()
+
+    def test_electrical_app_restore_preserves_preview_seconds(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "electrical.csv"
+            self.write_electrical_csv(path)
+            frame = wx.Frame(None)
+            try:
+                panel = RamanAnalysisPanel(frame)
+
+                panel.electrical_page.apply_app_parameters(
+                    {
+                        "raw_path": str(path),
+                        "raw_preview_s": "0.75",
+                        "vg_preview_s": "0.25",
+                        "vd_preview_s": "0.5",
+                    }
+                )
+
+                self.assertEqual(panel.electrical_page.tc_raw_preview_s.GetValue(), "0.75")
+                self.assertEqual(panel.electrical_page.tc_vg_preview_s.GetValue(), "0.25")
+                self.assertEqual(panel.electrical_page.tc_vd_preview_s.GetValue(), "0.5")
+                self.assertIsNotNone(panel.electrical_page.data)
+            finally:
+                frame.Destroy()
+
+    @staticmethod
+    def write_electrical_csv(path, row_count=10, dt_s=0.01):
+        headers = [
+            GATE_TIME_COL,
+            GATE_VOLTAGE_COL,
+            GATE_CURRENT_COL,
+            DRAIN_TIME_COL,
+            DRAIN_VOLTAGE_COL,
+            DRAIN_CURRENT_COL,
+        ]
+        rows = []
+        for index in range(row_count):
+            time_s = index * dt_s
+            rows.append([time_s, 1.0 if index < 5 else 2.0, 1e-9, time_s, 0.01, 2e-9])
+        path.write_text(
+            "\n".join([",".join(headers)] + [",".join(f"{value:.12g}" for value in row) for row in rows]),
+            encoding="utf-8",
+        )
 
     def test_mapping_selected_preview_uses_short_numeric_legend(self):
         with tempfile.TemporaryDirectory() as tmp:
