@@ -46,12 +46,57 @@ The result is not a polished commercial instrument suite. It is research softwar
 
 ## Screenshots
 
-Screenshots are not bundled in this repository yet. Recommended GitHub screenshots:
+The interface is built around a fixed left-control / right-preview layout, so each workspace stays readable while experiments and analysis steps become more complex.
 
-- AFM/KPFM Controller with the source-profile preview.
-- AFM/KPFM live voltage plot during a sequence.
-- Raman Mapping with raw spectra and selected spectra.
-- Raman Insitu EChem analysis tab with peak positions, intensities, and ratios.
+![AFM/KPFM Controller](assets/images/AFM_KPFM_Controller.png)
+
+*AFM/KPFM Controller: source setup, sequence controls, calibration/function tools, and live preview in one workspace.*
+
+![Raman Insitu EChem Analysis](assets/images/Raman_Insitu-Echem_Analysis.png)
+
+*Raman Insitu EChem: sequence spectra, peak positions, peak intensities, and normalised ratios in a single analysis view.*
+
+### Full Gallery
+
+#### AFM/KPFM
+
+![AFM/KPFM Controller](assets/images/AFM_KPFM_Controller.png)
+
+![AFM/KPFM Intensity Calibration](assets/images/AFM_KPFM_Controller_Intensity_Calibration.png)
+
+![AFM/KPFM Analysis](assets/images/AFM_KPFM_Analysis.png)
+
+![AFM/KPFM HOPG Fit](assets/images/AFM_KPFM_Analysis_HOPG_fit.png)
+
+![AFM/KPFM Profiles](assets/images/AFM_KPFM_Analysis_profiles.png)
+
+#### APS/DWF/SPV
+
+![APS Analysis](assets/images/APS_Analysis.png)
+
+![APS Linear Analysis](assets/images/APS_Analysis_APS_analysis.png)
+
+![DOS Analysis](assets/images/APS_Analysis_DOS_analysis.png)
+
+![SPV Analysis](assets/images/APS_Analysis_SPV.png)
+
+#### Raman
+
+![Raman Baseline](assets/images/Raman_Baseline.png)
+
+![Raman Mapping](assets/images/Raman_mapping.png)
+
+![Raman Mapping Location Read](assets/images/Raman_mapping_location-read.png)
+
+![Raman Mapping Selected Spectra](assets/images/Raman_mapping_Selected.png)
+
+![Raman Insitu EChem Peak Windows](assets/images/Raman_Insitu-Echem_Peak-windows.png)
+
+![Raman Insitu EChem Analysis](assets/images/Raman_Insitu-Echem_Analysis.png)
+
+#### TPC
+
+![TPC Controller](assets/images/TPC_controller.png)
 
 ## Installation
 
