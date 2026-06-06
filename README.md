@@ -1,167 +1,414 @@
-﻿# Controllers & Analysers
+# Controllers & Analysers
 
-Controllers & Analysers is a wxPython application for experiment control and analysis workflows. It currently includes AFM/KPFM Keithley control, AFM/KPFM CPD image analysis, APS/DWF/SPV analysis, TPC laser-diode control, Raman baseline correction, Raman Mapping, Raman Insitu EChem sequence analysis, and reserved workspaces for future analysis tools.
+**English** | [简体中文](README.zh-CN.md)
 
-This v14 build keeps the tested hardware behavior from v10 while adding Raman Mapping, Insitu EChem linkage, AFM/KPFM image analysis, and app-state restore controls.
+Controllers & Analysers is a desktop research application for running laboratory control workflows and analysing experimental data in one place. It brings together Keithley-based AFM/KPFM light-bias control, CPD image analysis, APS/DWF/SPV analysis, TPC laser-diode control, Raman baseline correction, Raman mapping, and in situ electrochemical Raman sequence analysis.
+
+The project started from a practical lab problem: experimental work often moves between instrument control panels, spreadsheets, plotting scripts, image tools, and manual file conversions. Controllers & Analysers turns those repeated steps into a single wxPython GUI with live previews, saved parameters, safer hardware defaults, and export formats designed for downstream scientific analysis.
+
+This v14 package keeps the tested AFM/KPFM Keithley control behavior from the earlier v10 reconstruction while extending the application into a broader analysis workspace.
+
+## What It Does
+
+At a high level, the software helps with three connected tasks:
+
+1. **Control the experiment**  
+   Build AFM/KPFM source-current or optical-intensity timing sequences, preview the planned output, run a Keithley source meter over serial, and monitor live voltage.
+
+2. **Analyse the data**  
+   Work with CPD images, APS/DWF/SPV data, Raman spectra, Raman maps, and in situ electrochemical Raman sequences using dedicated GUI workspaces.
+
+3. **Keep workflows reproducible**  
+   Save parameters, restore workspace state, export CSV/TXT/PNG outputs, and keep hardware run data separate from planned source profiles.
+
+## Feature Highlights
+
+| Workspace | Main Capabilities |
+| --- | --- |
+| **AFM/KPFM Controller** | Keithley current-source control, current or calibrated-intensity source mode, Quick Test, recurrent and step timing, function-profile overlay, live voltage plotting, source-profile export, measured-run CSV export |
+| **AFM/KPFM Analysis** | CPD TIFF/PNG loading, CPD or energy display, HOPG reference fitting, illuminated-region marking, mask workflows, dark/light histograms, row/time profiles |
+| **APS/DWF/SPV** | APS, DWF, workfunction, DOS, and SPV analysis with plotting and CSV export workflows |
+| **TPC Control** | Red/green laser-diode current control through Keithley hardware with current-limit handling |
+| **Raman Baseline** | Raman TXT loading, `asPLS`, `drPLS`, and `Polynomial/backcor` baseline correction, optional WiRE analysed overlay, corrected-spectrum export |
+| **Raman Mapping** | WiRE WDF/TXT mapping import, spectrum unstacking, average/normalised previews, raw/location/selected tabs, Origin-friendly TXT export, selected spectra transfer to Insitu EChem |
+| **Raman Insitu EChem** | Sequence/WDF import, peak-window extraction, peak position and intensity tracking, normalised intensity ratios, sequence/time plotting, PNG and CSV export |
+
+## Why This Project Is Useful
+
+Many research scripts solve one step of a workflow. This project tries to connect the full loop:
+
+- **Before the experiment:** build and preview source profiles before sending anything to hardware.
+- **During the experiment:** keep source-current commands bounded by an internal safety limit and show live voltage/current context.
+- **After the experiment:** analyse images and spectra without manually reshaping files.
+- **Across sessions:** restore tabs, parameters, and loaded paths when desired, while never restoring active hardware output.
+
+The result is not a polished commercial instrument suite. It is research software built around real lab routines, where the details matter: disabled fields must not be parsed, OFF stages must not query the Keithley, selected Raman sequence numbers must not be renumbered, and measured hardware data should only be written when the user explicitly saves it.
+
+## Screenshots
+
+Screenshots are not bundled in this repository yet. Recommended GitHub screenshots:
+
+- AFM/KPFM Controller with the source-profile preview.
+- AFM/KPFM live voltage plot during a sequence.
+- Raman Mapping with raw spectra and selected spectra.
+- Raman Insitu EChem analysis tab with peak positions, intensities, and ratios.
+
+## Installation
+
+The known working environment is:
+
+- Windows
+- Python 3.13.x
+- wxPython 4.2.x
+- pyserial 3.5
+- numpy
+- matplotlib
+- scipy
+- Pillow
+- renishawWiRE, required for `.wdf` Raman files
+
+Install in editable mode from the repository root:
+
+```cmd
+pip install -e .
+```
+
+If wxPython installation is difficult on a new machine, install a compatible wheel for your Python version first, then rerun the editable install.
 
 ## Run
 
-From this folder:
+From a source checkout:
 
 ```cmd
 python run_ca_app.py
 ```
 
-Or, after editable install:
+Or after editable installation:
 
 ```cmd
-pip install -e .
 ca-app
 ```
 
-## Hardware Defaults
+The active packaged application lives under:
 
-- COM port: `COM3` by default, editable in hardware controller tabs
-- Baudrate: `38400` by default, selectable as `9600`, `19200`, `38400`, or `57600`
-- Source mode sent to Keithley: current
-- Measurement mode: voltage
-- Default voltage compliance: `5.0 V`
-- Default internal current limit: `110.0 mA`
+```text
+src/ca_app/
+```
 
-Check the hardware setup and safe current/compliance limits before enabling output.
+The top-level GUI shell is:
 
-## GUI Behavior Notes
+```text
+src/ca_app/gui/main_frame.py
+```
 
-- AFM/KPFM `START` locks a run snapshot. Calibration method/range edits and function edits made while a sequence is running update previews only; they do not change the active Keithley output current.
-- The `Restore` menu controls what `app_state.json` remembers between launches: `View`, `Tab`, or `Parameters`.
-- Restore `Parameters` remembers loaded files, typed values, choices, and checkboxes where a workspace supports automatic app-state restore. It does not restore active hardware output, live measurements, run data, or logs.
-- Function control overlays the selected Recurrent or Step ON stages. When it is enabled, ON-stage current/intensity value fields are greyed out because `f(x)` supplies the value during each ON duration.
-- ON durations remain meaningful in Function control: they define how long each injected function profile runs.
-- Enabling Function control switches the right preview notebook to `Function profile`.
-- Enabling Quick Test switches the right preview notebook to `Source profile`.
-- Loading a calibration CSV switches the right preview notebook to `Intensity calibration` after the file loads successfully.
-- When a calibration model is loaded, `Source profile` shows source current on the left y-axis and optical intensity on the right y-axis where applicable.
-- The Calibration tab uses compact fit-statistic labels instead of a multiline statistics box.
-- The Live voltage plot starts at 0 V / 0 mA on `START`, uses real Keithley voltage reads during ON periods, and plots software-known 0 V / 0 mA points during OFF periods without querying the Keithley.
-- `Save CSV (Source)` exports the planned source profile. `Save Keithley CSV` saves measured run data only when clicked; run completion does not automatically create `keithley_run_data_*.csv`.
-- `View -> Raman` includes `Baseline`, `Mapping`, `Insitu EChem`, and a reserved blank `Electrical` tab.
-- Substrate Baseline supports asPLS, drPLS, and Polynomial/backcor Raman baseline correction.
-- Raman Substrate Baseline uses a single right-side `Preview` tab with two stacked figures: raw spectrum plus estimated baseline on top, and corrected spectrum plus optional WiRE software analysed overlay below.
-- Raman Auto mode evaluates visible candidate lists. Manual mode accepts one value per parameter and refits only when `Fit` is clicked.
-- Raman output defaults to `_Copy.txt` and saves the corrected two-column Raman spectrum.
-- Raman Mapping loads WiRE WDF/TXT map files, unstacks spectra, saves Origin-friendly TXT, plots raw/location/selected spectra, and transfers selected spectra to Insitu EChem.
-- Raman Insitu EChem loads sequence files with `#Time`, `#Wave`, and `#Intensity`, sequence files with `#Sequence`, `#Wave`, and `#Intensity`, and WDF sequence files. It extracts local peak maxima in user-defined windows and plots peak positions, peak intensities, and normalized intensity ratios against sequence or calibrated time.
+## Quick Start
 
-## AFM/KPFM Analysis
+1. Launch the app with `python run_ca_app.py`.
+2. Choose a workspace from the `View` menu.
+3. For analysis workflows, load the required data file and inspect the preview tabs before saving.
+4. For hardware workflows, confirm COM port, baudrate, voltage compliance, and internal max current before enabling output.
+5. Use `Save Parameters` / `Load Parameters` for explicit workflow files.
+6. Use the `Restore` menu only for automatic app-state restore between launches.
 
-The AFM/KPFM Analysis tab loads CPD images from TIFF or PNG files. TIFF loading attempts to find raw image-sized metadata/tag arrays automatically; PNG loading uses the user-entered voltage min/max to rescale pixel values.
+## AFM/KPFM Controller
+
+The AFM/KPFM controller operates a Keithley source meter over RS-232 serial communication.
+
+Core hardware mode:
+
+```text
+Source: current
+Measure: voltage
+Default COM port: COM3
+Default baudrate: 38400
+Default voltage compliance: 5.0 V
+Default internal max current: 110.0 mA
+```
+
+The Keithley always receives current commands. In intensity mode, the requested optical intensity is converted to the required source current using the loaded calibration model before any hardware command is sent.
+
+Supported control styles:
+
+- **Quick Test:** standalone ON/OFF hardware test.
+- **Recurrent control:** repeated ON/OFF pattern.
+- **Step control:** row-based ON/OFF sequence and the default base pattern.
+- **Function control:** an `f(x)` profile overlaid onto recurrent or step ON stages.
+
+Function control is not a separate timing pattern. It replaces ON-stage values while preserving the ON durations from the recurrent or step pattern. When Function control is enabled, the base ON value fields are disabled because the function profile supplies the current or intensity.
+
+## Calibration And Function Profiles
+
+The default calibration file is:
+
+```text
+src/ca_app/resources/default_intensity_calibration.csv
+```
+
+Accepted calibration format:
+
+```text
+Current_mA,Intensity_mW
+```
+
+The loader also accepts any two numeric columns where the first numeric column is current in mA and the second is intensity in mW.
+
+Default calibration fit range:
+
+```text
+67 to 94 mA
+```
+
+Available calibration methods:
+
+- `Empirical power-exp`
+- `Two threshold power`
+- `Two stage softplus slope`
+- `Generalized exponential power`
+- `Polynomial degree 3`
+- `Interpolation`
+- `Linear`
+- `Quadratic`
+- `Cubic`
+
+The empirical models are smooth interpolation fits for measured calibration data. They are not physical laser-diode equations and should not be used for extrapolation far outside the measured range.
+
+Default function profile:
+
+```text
+f(x) = x*m+b
+X min = 0
+X max = 180
+Y min = 0.1
+Y max = 4.99
+```
+
+The `Fit it` button can solve parameterised expressions such as:
+
+```text
+x*m+b
+a*x^2+b*x+c
+```
+
+After fitting, the expression is replaced with a numeric expression so preview, validation, CSV export, and execution use the same safe evaluator.
+
+## Hardware Safety Model
+
+This project intentionally keeps hardware behavior explicit.
+
+- All commanded source currents are checked against `Internal max current / mA`.
+- Quick Test and Function control are mutually exclusive.
+- Quick Test and sequence execution do not run at the same time.
+- `START` freezes a run snapshot before opening the serial port.
+- GUI calibration and function edits during a run update previews only; they do not change the active Keithley output current.
+- OFF stages send `:OUTP OFF` and do not send `:READ?`, `:INIT`, or `:FETCH?`.
+- OFF stages log local software-known `0 mA` source rows with blank measured voltage/current fields.
+- Normal finish, STOP, and exception cleanup all attempt to set source current to `0 mA` and then send `:OUTP OFF`.
+- Measured Keithley run data is saved only when `Save Keithley CSV` is clicked.
+
+Before connecting hardware, confirm the COM port, baudrate, compliance voltage, internal current limit, wiring, and optical calibration are safe for the actual setup.
+
+## AFM/KPFM Image Analysis
+
+The AFM/KPFM Analysis tab loads CPD images from TIFF or PNG files. TIFF loading attempts to locate raw image-sized metadata/tag arrays automatically. PNG loading uses user-provided voltage min/max values to rescale pixel values.
 
 Main features:
 
-- CPD or Energy display, with HOPG reference peak fitting for Energy mode.
-- Slow scan direction, row/time x-axis, illuminated-region marking, and dark/light histogram comparison.
-- One-mask and two-mask workflows, including inverse/middle mask generation.
-- Robust preview color scaling to reduce outlier-dominated colorbars.
-- Selectable image colormaps in `Uniform`, `Sequential`, `Diverging`, and `Misc` groups.
-- Save/load analysis parameters independent of app-state restore.
+- CPD or Energy display.
+- HOPG reference peak fitting for Energy mode.
+- Slow scan direction handling.
+- Row or time x-axis profiles.
+- Illuminated-region marking.
+- One-mask and two-mask workflows, including inverse and middle mask generation.
+- Dark/light histogram comparison.
+- Robust preview colour scaling to reduce outlier-dominated colourbars.
+- Selectable image colormaps.
 
-## Raman Baseline Methods
+## Raman Workflows
 
-Raman files are read as two numeric columns: Raman shift and intensity. Additional numeric columns are ignored by the current GUI workflow.
+The Raman workspace contains four tabs:
+
+```text
+Baseline
+Mapping
+Insitu EChem
+Electrical
+```
+
+The `Electrical` tab is currently reserved.
+
+### Raman Baseline
+
+Raman Baseline loads text files with at least two numeric columns:
+
+```text
+#Wave    #Intensity
+1820.535156    3780.142822
+...
+```
 
 Available methods:
 
-- `asPLS`: parameters are `lambda` and `k`.
-- `drPLS`: parameters are `lambda` and `eta`.
-- `Polynomial/backcor`: parameters are `Orders`, `Thresholds`, and `Below-baseline fraction`; internal cost function is fixed as `atq`.
+- `asPLS`
+- `drPLS`
+- `Polynomial/backcor`
 
-The optional WiRE software analysed result uses the same two-column text format and is only shown as an overlay on the corrected-spectrum preview.
+Auto mode evaluates the visible candidate parameter lists. Manual mode accepts one value per parameter and refits only when `Fit` is clicked.
 
-## Raman Mapping
+The preview shows:
 
-Mapping uses a left parameter panel and four right preview tabs:
+- raw Raman spectrum with estimated baseline
+- baseline-corrected Raman spectrum with optional WiRE analysed overlay
 
-- `Avg./Norm.`: raw unstacked table plus averaged/normalised intensity preview.
-- `Raw data`: every N-th raw spectrum preview, with an optional legend when not plotting all spectra.
-- `Location`: mapping locations and WDF embedded image metadata when available.
-- `Selected`: selected spectra only.
+Save writes only the corrected two-column spectrum. The default output filename is the raw file stem plus `_Copy.txt`.
 
-The selected-column field is 1-based and accepts individual columns and inclusive ranges such as `1,2-4,5` or `45-60`. `Save selected` and `Load to Insitu Echem` must preserve the original selected-column sequence numbers; selecting columns `45-60` produces sequences `45..60`, not `1..16`.
+### Raman Mapping
 
-## Raman Insitu EChem
+Raman Mapping supports:
 
-Insitu EChem uses a left parameter panel and two right preview tabs. The loaded filename is shown in a compact read-only field with the full path in the tooltip:
+- WiRE WDF mapping files
+- WiRE stacked TXT mapping files with `#X`, `#Y`, `#Wave`, and `#Intensity`
 
-- `Peak windows`: every N-th Raman spectrum with all peak windows highlighted.
-- `Analysis`: four plots in one tab: gradient spectra, peak positions, peak intensities, and normalized intensity ratios.
+The workflow unstacks spectra into a wide table where column 1 is wavenumber, later columns are individual spectra, and final columns contain averaged and normalised intensity.
 
-Defaults:
+Preview tabs:
 
-- X-axis mode: `Sequence`
-- Time calibration: `Time Offset = 5.00 s`, `Time per sequence = 2.09 s`
-- Peak windows: `1371 +/- 5`, `1423 +/- 6`, `1516 +/- 5`, `1606 +/- 5`
-- Normalized peak: `1423` when available
+- `Avg./Norm.`
+- `Raw data`
+- `Location`
+- `Selected`
 
-When input uses `#Sequence`, or when data is loaded from Mapping/WDF sequence transfer, Sequence mode is forced and the Time x-axis option is disabled. `#Sequence` values are real sequence labels and are not remapped to `1..N`.
+Selected spectra use 1-based column labels and accept inclusive ranges:
 
-Peak-window rows can be added or deleted, and the `Update` button forces a preview refresh after edits. The save buttons each write one PNG and one matching CSV:
+```text
+1,2-4,5
+45-60
+```
 
-- spectra plot/data
-- peak positions plot/data
-- peak intensities plot/data
-- ratios plot/data
+Selected-column numbers are preserved during plotting, TXT export, and in-memory transfer to Insitu EChem.
+
+### Raman Insitu EChem
+
+Insitu EChem accepts Raman sequence text files:
+
+```text
+#Time    #Wave    #Intensity
+0.000000    2063.746094    3895.066162
+...
+```
+
+It also accepts:
+
+```text
+#Sequence    #Wave    #Intensity
+1.000000    1728.768555    64.341232
+...
+```
+
+and WDF sequence files.
+
+The analysis extracts local peak maxima inside user-defined Raman-shift windows and plots:
+
+- every N-th spectrum with peak windows
+- peak positions vs sequence or calibrated time
+- peak intensities vs sequence or calibrated time
+- intensity ratios normalised to a selected peak
+
+Default peak windows:
+
+```text
+1371 +/- 5
+1423 +/- 6
+1516 +/- 5
+1606 +/- 5
+```
+
+When input uses `#Sequence`, or when data is transferred from Mapping/WDF sequence workflows, Sequence mode is forced and the Time x-axis option is disabled. Sequence labels are treated as real labels and are not remapped to `1..N`.
+
+## Save, Restore, And Export
+
+Manual parameter files use JSON and are separate from automatic app-state restore.
+
+The `Restore` menu controls how much state is remembered between launches:
+
+- `View`: restore only the last top-level workspace.
+- `Tab`: restore the workspace and selected notebook tabs.
+- `Parameters`: restore workspace, tabs, loaded file paths, typed values, choices, and checkboxes where supported.
+
+The app does not save or restore active hardware output, measured voltage, runtime logs, live plot data, or measured run data through app-state restore.
+
+Important export paths:
+
+- `Save CSV (Source)`: saves the planned source profile only.
+- `Save Keithley CSV`: saves measured AFM/KPFM run data only when clicked.
+- Raman Mapping `Save`: exports Origin-friendly TXT.
+- Raman Mapping `Save selected`: exports selected Raman sequence TXT.
+- Raman Insitu EChem save buttons each write one PNG and one CSV.
 
 ## Project Layout
 
 ```text
 run_ca_app.py
-  Source-checkout launcher for the application.
+  Source-checkout launcher.
 
 src/ca_app/app.py
   Application entrypoint used by the console script.
 
+src/ca_app/constants.py
+  Import-safe application defaults.
+
 src/ca_app/gui/main_frame.py
-  Top-level frame, View menu, Restore menu, About menu, workspace switching, and app-state persistence.
+  Top-level frame, View menu, Restore menu, workspace switching,
+  app-state persistence, and About dialogs.
 
 src/ca_app/gui/panels/
-  Independent workspace panels for AFM/KPFM, APS, TPC, Raman, and future tools.
+  Independent wxPython workspace panels.
 
-src/ca_app/gui/panels/afm_kpfm_panel.py
-  AFM/KPFM notebook containing Controller and Analysis tabs.
+src/ca_app/core/
+  Analysis, calibration, function-profile, and data-processing logic.
 
-src/ca_app/gui/panels/afm_controller_panel.py
-  Keithley controller UI and runtime behavior.
+src/ca_app/hardware/
+  Keithley serial settings and SCPI command helpers.
 
-src/ca_app/gui/panels/afm_analysis_panel.py
-  AFM/KPFM CPD TIFF/PNG image analysis, masks, illuminated regions, and HOPG fitting.
-
-src/ca_app/gui/panels/aps_panel.py
-  APS, DWF, workfunction, DOS, and SPV analysis workspace.
-
-src/ca_app/gui/panels/raman_panel.py
-  Raman notebook with Baseline, Mapping, Insitu EChem, and reserved Electrical tabs.
-
-src/ca_app/core/intensity_profile_tools.py
-  Function expression evaluation, calibration CSV loading, empirical fitting, and intensity-current inversion.
-
-src/ca_app/core/aps_analysis.py
-  APS, DWF, workfunction, DOS, and SPV analysis logic.
-
-src/ca_app/core/raman_baseline.py
-  Raman text import, asPLS, drPLS, and Polynomial/backcor baseline fitting, WiRE overlay interpolation, and corrected text export.
-
-src/ca_app/core/raman_mapping.py
-  Raman WiRE WDF/TXT loading, mapping unstacking, Origin TXT export, selected-sequence TXT export, and WDF image/location metadata helpers.
-
-src/ca_app/core/raman_insitu_echem.py
-  Raman sequence import, Mapping/WDF sequence conversion, peak-window extraction, peak summaries, normalized intensity ratios, and CSV export.
+src/ca_app/io/
+  File import/export boundaries.
 
 src/ca_app/resources/
-  Default and template calibration CSV files.
+  Bundled calibration CSVs and example parameter resources.
+
+src/ca_app/runtime/
+  Planned extraction area for future worker services.
 
 tests/
-  Non-hardware tests for analysis, calibration, and function-profile logic.
+  Non-hardware tests for core logic and GUI-state behavior.
 ```
 
+## Development
 
+Run the non-hardware test suite:
 
+```cmd
+python -m unittest discover -s tests
+```
+
+Run a compile check:
+
+```cmd
+python -m compileall src tests
+```
+
+The tests focus on analysis logic, calibration/function-profile behavior, Raman workflows, TPC current handling, COM-port defaults, and workspace state restoration.
+
+## Documentation
+
+Additional notes live in:
+
+- [docs/architecture.md](docs/architecture.md)
+- [docs/hardware_safety.md](docs/hardware_safety.md)
+- [docs/calibration_models.md](docs/calibration_models.md)
+- [src/ca_app/runtime/README.md](src/ca_app/runtime/README.md)
+
+## Project Status
+
+This is active research software. It is designed around real laboratory workflows and has non-hardware tests for the core logic, but hardware operations must still be reviewed against the connected instrument and sample before use.
+
+For new contributors, the safest path is to start with analysis and file-processing workflows, then study the hardware safety notes before changing controller behavior.
