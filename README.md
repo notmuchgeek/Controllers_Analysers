@@ -1,7 +1,6 @@
 ﻿# Controllers & Analysers
 
-**English** | [绠€浣撲腑鏂嘳(README.zh-CN.md)
-
+**English** | 
 Version: `v16.2.260606.2137`
 
 Controllers & Analysers is a wxPython desktop application for laboratory control and scientific analysis workflows. It combines Keithley-based AFM/KPFM control, CPD image analysis, APS/DWF/SPV analysis, TPC laser-diode control, Raman baseline correction, Raman mapping, Raman in situ electrochemical sequence analysis, and Raman Electrical current-voltage preview tools.
@@ -11,7 +10,6 @@ Controllers & Analysers is a wxPython desktop application for laboratory control
 The detailed documentation is split by audience and language:
 
 - [English documentation index](docs/en/index.md)
-- [涓枃鏂囨。绱㈠紩](docs/zh-CN/index.md)
 - [Coding-agent instructions](AGENTS.md)
 
 Useful starting points:
