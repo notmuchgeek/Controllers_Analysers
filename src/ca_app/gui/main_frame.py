@@ -3,19 +3,15 @@
 from __future__ import annotations
 
 import json
+from importlib import import_module
 from pathlib import Path
 
 import wx
 
-from ca_app.gui.panels.afm_kpfm_panel import AfmKpfmPanel
-from ca_app.gui.panels.aps_panel import ApsAnalysisPanel
-from ca_app.gui.panels.raman_panel import RamanAnalysisPanel
-from ca_app.gui.panels.tpc_panel import TpcLaserDiodePanel
-
 
 WORKSPACE_NAMES = ("AFM/KPFM", "APS", "TPC", "Raman")
 DEFAULT_WORKSPACE = "AFM/KPFM"
-APP_VERSION = "v16.1.260606.2115"
+APP_VERSION = "v16.2.260606.2137"
 APP_TITLE = f"Controller & Analysers {APP_VERSION}"
 STATE_FILENAME = "app_state.json"
 RESTORE_VIEW = "view"
@@ -23,6 +19,12 @@ RESTORE_TAB = "tab"
 RESTORE_PARAMETERS = "parameters"
 RESTORE_LEVELS = (RESTORE_VIEW, RESTORE_TAB, RESTORE_PARAMETERS)
 DEFAULT_RESTORE_LEVEL = RESTORE_VIEW
+WORKSPACE_FACTORIES = {
+    "AFM/KPFM": ("ca_app.gui.panels.afm_kpfm_panel", "AfmKpfmPanel"),
+    "APS": ("ca_app.gui.panels.aps_panel", "ApsAnalysisPanel"),
+    "TPC": ("ca_app.gui.panels.tpc_panel", "TpcLaserDiodePanel"),
+    "Raman": ("ca_app.gui.panels.raman_panel", "RamanAnalysisPanel"),
+}
 
 
 def normalize_workspace_name(workspace):
@@ -82,6 +84,7 @@ class CaAppFrame(wx.Frame):
         self.restore_level = self.app_state["restore_level"]
         self.active_workspace = self.app_state["last_workspace"]
         self.restoring_state = False
+        self.bound_notebook_ids = set()
         self.build_ui()
         self.Bind(wx.EVT_CLOSE, self.on_close)
         self.Centre()
@@ -94,22 +97,11 @@ class CaAppFrame(wx.Frame):
         self.workspace_container = wx.Panel(root)
         self.workspace_sizer = wx.BoxSizer(wx.VERTICAL)
 
-        self.workspace_panels = {
-            "AFM/KPFM": AfmKpfmPanel(self.workspace_container),
-            "APS": ApsAnalysisPanel(self.workspace_container),
-            "TPC": TpcLaserDiodePanel(self.workspace_container),
-            "Raman": RamanAnalysisPanel(self.workspace_container),
-        }
-
-        for name, panel in self.workspace_panels.items():
-            self.workspace_sizer.Add(panel, 1, wx.EXPAND)
-            panel.Show(name == self.active_workspace)
-
         self.workspace_container.SetSizer(self.workspace_sizer)
         root_sizer.Add(self.workspace_container, 1, wx.EXPAND)
         root.SetSizer(root_sizer)
         self.SetMinSize((1260, 760))
-        self.bind_notebook_save_events()
+        self.ensure_workspace_panel(self.active_workspace)
         self.restore_saved_state()
 
     def build_menu_bar(self):
@@ -184,15 +176,59 @@ class CaAppFrame(wx.Frame):
         self.save_current_app_state()
 
     def show_workspace(self, workspace):
-        if workspace not in self.workspace_panels:
+        if workspace not in WORKSPACE_NAMES:
             return
+        self.ensure_workspace_panel(workspace)
         self.active_workspace = workspace
         for name, panel in self.workspace_panels.items():
             panel.Show(name == workspace)
         if workspace in self.view_menu_items:
             self.view_menu_items[workspace].Check(True)
+        panel = self.workspace_panels.get(workspace)
+        if panel is not None and hasattr(panel, "ensure_active_lazy_pages"):
+            try:
+                panel.ensure_active_lazy_pages()
+                self.bind_notebook_save_events(panel)
+            except Exception:
+                pass
         self.workspace_container.Layout()
         self.save_current_app_state()
+
+    def ensure_workspace_panel(self, workspace):
+        if workspace in self.workspace_panels:
+            return self.workspace_panels[workspace]
+        module_name, class_name = WORKSPACE_FACTORIES[workspace]
+        panel_class = getattr(import_module(module_name), class_name)
+        panel = panel_class(self.workspace_container)
+        panel.Show(False)
+        self.workspace_panels[workspace] = panel
+        self.workspace_sizer.Add(panel, 1, wx.EXPAND)
+        self.bind_notebook_save_events(panel)
+        self.apply_initial_workspace_state(workspace, panel)
+        return panel
+
+    def apply_initial_workspace_state(self, workspace, panel):
+        restoring_state = self.restoring_state
+        self.restoring_state = True
+        try:
+            if self.restore_level == RESTORE_PARAMETERS:
+                payload = self.app_state.get("parameters", {}).get(workspace)
+                if isinstance(payload, dict) and hasattr(panel, "apply_app_parameters"):
+                    try:
+                        panel.apply_app_parameters(payload)
+                    except Exception:
+                        pass
+            if self.restore_level in {RESTORE_TAB, RESTORE_PARAMETERS}:
+                tab_state = self.app_state.get("tabs", {}).get(workspace)
+                self.apply_panel_tab_state(panel, tab_state)
+                if hasattr(panel, "ensure_active_lazy_pages"):
+                    try:
+                        panel.ensure_active_lazy_pages()
+                        self.bind_notebook_save_events(panel)
+                    except Exception:
+                        pass
+        finally:
+            self.restoring_state = restoring_state
 
     def state_file_path(self):
         folder = wx.StandardPaths.Get().GetUserLocalDataDir()
@@ -221,28 +257,28 @@ class CaAppFrame(wx.Frame):
             "parameters": {},
         }
         if self.restore_level in {RESTORE_TAB, RESTORE_PARAMETERS}:
-            state["tabs"] = self.collect_all_tab_state()
+            state["tabs"] = self.collect_all_tab_state(self.app_state.get("tabs", {}))
         if self.restore_level == RESTORE_PARAMETERS:
-            state["parameters"] = self.collect_all_parameter_state()
+            state["parameters"] = self.collect_all_parameter_state(self.app_state.get("parameters", {}))
         self.app_state = normalize_app_state(state)
         save_app_state(self.state_file_path(), self.app_state)
 
     def restore_saved_state(self):
         self.restoring_state = True
         try:
-            if self.restore_level == RESTORE_PARAMETERS:
-                self.apply_all_parameter_state(self.app_state.get("parameters", {}))
             self.show_workspace(self.active_workspace)
-            if self.restore_level in {RESTORE_TAB, RESTORE_PARAMETERS}:
-                self.apply_all_tab_state(self.app_state.get("tabs", {}))
         finally:
             self.restoring_state = False
 
-    def collect_all_tab_state(self):
-        return {
-            name: self.collect_panel_tab_state(panel)
-            for name, panel in self.workspace_panels.items()
-        }
+    def collect_all_tab_state(self, previous_tabs=None):
+        previous_tabs = previous_tabs if isinstance(previous_tabs, dict) else {}
+        result = dict(previous_tabs)
+        for name, panel in self.workspace_panels.items():
+            result[name] = self.merge_tab_state(
+                self.collect_panel_tab_state(panel),
+                previous_tabs.get(name),
+            )
+        return result
 
     def apply_all_tab_state(self, tabs):
         if not isinstance(tabs, dict):
@@ -253,12 +289,20 @@ class CaAppFrame(wx.Frame):
                 self.apply_panel_tab_state(panel, panel_state)
         self.workspace_container.Layout()
 
-    def collect_all_parameter_state(self):
-        result = {}
+    def collect_all_parameter_state(self, previous_parameters=None):
+        previous_parameters = previous_parameters if isinstance(previous_parameters, dict) else {}
+        result = dict(previous_parameters)
         for name, panel in self.workspace_panels.items():
             if hasattr(panel, "collect_app_parameters"):
                 try:
-                    result[name] = panel.collect_app_parameters()
+                    collected = panel.collect_app_parameters()
+                    previous = previous_parameters.get(name)
+                    if isinstance(previous, dict) and isinstance(collected, dict):
+                        merged = dict(previous)
+                        merged.update(collected)
+                        result[name] = merged
+                    else:
+                        result[name] = collected
                 except Exception:
                     continue
         return result
@@ -274,12 +318,18 @@ class CaAppFrame(wx.Frame):
                 except Exception:
                     continue
 
-    def bind_notebook_save_events(self):
-        for notebook in self.find_notebooks(self):
+    def bind_notebook_save_events(self, window=None):
+        window = self if window is None else window
+        for notebook in self.find_notebooks(window):
+            notebook_id = id(notebook)
+            if notebook_id in self.bound_notebook_ids:
+                continue
             notebook.Bind(wx.EVT_NOTEBOOK_PAGE_CHANGED, self.on_any_notebook_changed)
+            self.bound_notebook_ids.add(notebook_id)
 
     def on_any_notebook_changed(self, event):
         event.Skip()
+        self.bind_notebook_save_events()
         if self.restore_level in {RESTORE_TAB, RESTORE_PARAMETERS}:
             wx.CallAfter(self.save_current_app_state)
 
@@ -310,6 +360,32 @@ class CaAppFrame(wx.Frame):
                 selection = 0
             selection = max(0, min(selection, notebook.GetPageCount() - 1))
             notebook.SetSelection(selection)
+        if hasattr(panel, "ensure_active_lazy_pages"):
+            panel.ensure_active_lazy_pages()
+
+    @classmethod
+    def merge_tab_state(cls, current, previous):
+        current = current if isinstance(current, list) else []
+        if not isinstance(previous, list):
+            return current
+        merged = list(current)
+        current_pages = [
+            item.get("pages")
+            for item in current
+            if isinstance(item, dict) and isinstance(item.get("pages"), list)
+        ]
+        for previous_item in previous:
+            if not isinstance(previous_item, dict) or not isinstance(previous_item.get("pages"), list):
+                continue
+            if cls.match_notebook_state(previous_item["pages"], current):
+                continue
+            if any(
+                cls.match_notebook_state(previous_item["pages"], [{"pages": pages}])
+                for pages in current_pages
+            ):
+                continue
+            merged.append(previous_item)
+        return merged
 
     @staticmethod
     def match_notebook_state(page_names, states):

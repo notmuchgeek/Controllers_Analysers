@@ -1,6 +1,6 @@
-# Module Map
+﻿# Module Map
 
-Version: `v16.1.260606.2115`
+Version: `v16.2.260606.2137`
 
 This map describes the project from the top layer to the lower implementation layers.
 
@@ -149,3 +149,4 @@ tests/
 ```
 
 Non-hardware tests. Add tests here for core changes and state-adapter behavior.
+

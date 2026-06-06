@@ -1,59 +1,41 @@
-# 硬件安全
+﻿# 纭欢瀹夊叏
 
-版本：`v16.1.260606.2115`
+鐗堟湰锛歚v16.2.260606.2137`
 
-任何可以控制硬件的修改都应视为安全敏感修改。
+浠讳綍鍙互鎺у埗纭欢鐨勪慨鏀归兘搴旇涓哄畨鍏ㄦ晱鎰熶慨鏀广€?
+## Keithley 妯″紡
 
-## Keithley 模式
+AFM/KPFM 鎺у埗鍣ㄩ€氳繃 RS-232 鎺у埗 Keithley source meter锛?
+- Source function锛歝urrent銆?- Measure function锛歷oltage銆?- 榛樿 COM锛歚COM3`銆?- 榛樿 baudrate锛歚38400`銆?- 榛樿 compliance锛歚5.0 V`銆?
+Keithley 姘歌繙鎺ユ敹鐢垫祦鍛戒护銆侷ntensity mode 鍙槸 GUI 灞傜殑鐩爣鍗曚綅锛屼細鍏堣浆鎹㈡垚鐢垫祦銆?
+## 鐢垫祦闄愬埗
 
-AFM/KPFM 控制器通过 RS-232 控制 Keithley source meter：
+鎵€鏈夊彲鑳借緭鍑哄埌 Keithley 鐨勭數娴侀兘蹇呴』妫€鏌?`Internal max current / mA`锛?
+- Quick Test銆?- Current-mode recurrent ON銆?- Current-mode step ON銆?- Current-mode function profile銆?- Intensity-mode 杞崲鐢垫祦銆?- Intensity-mode function profile 杞崲鐢垫祦銆?
+瓒呴檺鏃朵笉鑳芥墦寮€杈撳嚭銆?
+## OFF 闃舵
 
-- Source function：current。
-- Measure function：voltage。
-- 默认 COM：`COM3`。
-- 默认 baudrate：`38400`。
-- 默认 compliance：`5.0 V`。
-
-Keithley 永远接收电流命令。Intensity mode 只是 GUI 层的目标单位，会先转换成电流。
-
-## 电流限制
-
-所有可能输出到 Keithley 的电流都必须检查 `Internal max current / mA`：
-
-- Quick Test。
-- Current-mode recurrent ON。
-- Current-mode step ON。
-- Current-mode function profile。
-- Intensity-mode 转换电流。
-- Intensity-mode function profile 转换电流。
-
-超限时不能打开输出。
-
-## OFF 阶段
-
-OFF 阶段不能查询 Keithley 测量，禁止：
+OFF 闃舵涓嶈兘鏌ヨ Keithley 娴嬮噺锛岀姝細
 
 - `:READ?`
 - `:INIT`
 - `:FETCH?`
 
-允许：
-
+鍏佽锛?
 - `:OUTP OFF`
-- 记录软件已知 `0 V / 0 mA`
-- 等待 OFF duration
+- 璁板綍杞欢宸茬煡 `0 V / 0 mA`
+- 绛夊緟 OFF duration
 
-## 清理路径
+## 娓呯悊璺緞
 
-正常结束、STOP、异常都应尽量发送：
+姝ｅ父缁撴潫銆丼TOP銆佸紓甯搁兘搴斿敖閲忓彂閫侊細
 
 ```text
 :SOUR:CURR:LEV 0
 :OUTP OFF
 ```
 
-然后再关闭串口。
+鐒跺悗鍐嶅叧闂覆鍙ｃ€?
+## 纭欢娴嬭瘯
 
-## 硬件测试
-
-硬件测试必须由用户明确确认，并确认 COM、baudrate、compliance、电流限制和样品安全。
+纭欢娴嬭瘯蹇呴』鐢辩敤鎴锋槑纭‘璁わ紝骞剁‘璁?COM銆乥audrate銆乧ompliance銆佺數娴侀檺鍒跺拰鏍峰搧瀹夊叏銆?

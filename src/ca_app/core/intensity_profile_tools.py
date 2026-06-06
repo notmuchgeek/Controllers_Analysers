@@ -23,10 +23,23 @@ from typing import Callable, Dict, Iterable, Optional, Tuple
 
 import numpy as np
 
-try:
-    from scipy.optimize import least_squares
-except ImportError:  # pragma: no cover - handled at runtime with a clear user error.
-    least_squares = None
+_least_squares = None
+_least_squares_import_failed = False
+
+
+def get_least_squares():
+    global _least_squares, _least_squares_import_failed
+    if _least_squares is not None:
+        return _least_squares
+    if _least_squares_import_failed:
+        return None
+    try:
+        from scipy.optimize import least_squares
+    except ImportError:  # pragma: no cover - handled at runtime with a clear user error.
+        _least_squares_import_failed = True
+        return None
+    _least_squares = least_squares
+    return _least_squares
 
 
 class CalibrationError(ValueError):
@@ -422,6 +435,7 @@ class LaserCalibrationModel:
         self.coeffs = np.polyfit(self.current_mA, self.intensity_mW, degree)
 
     def _fit_empirical_model(self) -> None:
+        least_squares = get_least_squares()
         if least_squares is None:
             raise CalibrationError(f"{self.method} fit requires scipy. Install scipy in this Python environment.")
         if len(self.current_mA) < 5:

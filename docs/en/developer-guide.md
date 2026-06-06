@@ -1,6 +1,6 @@
-# Developer Guide
+﻿# Developer Guide
 
-Version: `v16.1.260606.2115`
+Version: `v16.2.260606.2137`
 
 This guide is for coding agents and human maintainers.
 
@@ -32,6 +32,8 @@ Most workspaces use a fixed layout:
 - Right bottom: compact log/status area.
 
 Do not replace this with a resizable splitter unless the user asks for a broader UX change.
+
+The main frame lazy-loads workspace panels. Code that touches a workspace from `CaAppFrame` should call `show_workspace()` or `ensure_workspace_panel()` before reading `workspace_panels[name]`. When adding a new notebook or parameter adapter, preserve saved state for unbuilt workspaces and bind notebook save events after any lazy page is created.
 
 ## Module Boundaries
 
@@ -84,3 +86,4 @@ Before finalizing changes:
 - Search for stale workspace text that describes Electrical as blank or not implemented.
 - Confirm English and Chinese docs stay in matching structure.
 - Keep accidental generated caches out of the folder if possible.
+

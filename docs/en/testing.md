@@ -1,6 +1,6 @@
-# Testing
+﻿# Testing
 
-Version: `v16.1.260606.2115`
+Version: `v16.2.260606.2137`
 
 Testing has two layers: automated non-hardware tests and manual GUI checks. Hardware tests require explicit user confirmation.
 
@@ -26,7 +26,7 @@ python run_ca_app.py
 Confirm that the window title is:
 
 ```text
-Controller & Analysers v16.1.260606.2115
+Controller & Analysers v16.2.260606.2137
 ```
 
 Open `Help -> About` and confirm the same version appears in the Versions section.
@@ -95,3 +95,4 @@ Never restore active hardware output, measured voltage, runtime log text, live p
 ## Hardware Checks
 
 Only perform hardware checks after explicit confirmation. See [Hardware safety](hardware-safety.md).
+

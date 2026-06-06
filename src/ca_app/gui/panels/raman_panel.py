@@ -14,7 +14,6 @@ from matplotlib import colormaps
 from matplotlib.backends.backend_wxagg import FigureCanvasWxAgg
 from matplotlib.figure import Figure
 
-from ca_app.core.aps_analysis import dwf_preview_percent_from_slider
 from ca_app.core.raman_electrical import (
     DEFAULT_PREVIEW_SECONDS,
     DRAIN_CURRENT_COL,
@@ -80,6 +79,13 @@ from ca_app.core.raman_baseline import (
     read_raman_txt,
     save_corrected_txt,
 )
+
+
+def preview_percent_from_slider(value: int) -> float:
+    clamped = min(max(int(value), 0), 100)
+    if clamped <= 70:
+        return 1.0 + (29.0 * clamped / 70.0)
+    return 30.0 + (70.0 * (clamped - 70) / 30.0)
 
 
 class RamanAnalysisPanel(wx.Panel):
@@ -920,7 +926,7 @@ class RamanElectricalPanel(wx.Panel):
         total = self.channel_total_seconds(channel)
         if total <= 0:
             return DEFAULT_PREVIEW_SECONDS
-        percent = dwf_preview_percent_from_slider(slider.GetValue())
+        percent = preview_percent_from_slider(slider.GetValue())
         return max(total * percent / 100.0, 1.0 / 100.0)
 
     def channel_total_seconds(self, channel):
@@ -2398,4 +2404,3 @@ class RamanSubstrateBaselinePanel(wx.Panel):
     def log(self, message):
         stamp = datetime.now().strftime("%H:%M:%S")
         self.log_box.AppendText(f"[{stamp}] {message}\n")
-

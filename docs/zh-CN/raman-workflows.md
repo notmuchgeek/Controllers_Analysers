@@ -1,49 +1,32 @@
-# Raman 工作流
+﻿# Raman 宸ヤ綔娴?
+鐗堟湰锛歚v16.2.260606.2137`
 
-版本：`v16.1.260606.2115`
-
-Raman notebook 包含 Baseline、Mapping、Insitu EChem 和 Electrical。
-
+Raman notebook 鍖呭惈 Baseline銆丮apping銆両nsitu EChem 鍜?Electrical銆?
 ## Baseline
 
-输入为至少两列数值的 Raman TXT。前两列作为 Raman shift 和 intensity。
-
-方法：
-
+杈撳叆涓鸿嚦灏戜袱鍒楁暟鍊肩殑 Raman TXT銆傚墠涓ゅ垪浣滀负 Raman shift 鍜?intensity銆?
+鏂规硶锛?
 - `asPLS`
 - `drPLS`
 - `Polynomial/backcor`
 
-Auto 模式会在加载文件或改变方法时自动拟合。Manual 模式只在点击 `Fit` 后拟合。
-
+Auto 妯″紡浼氬湪鍔犺浇鏂囦欢鎴栨敼鍙樻柟娉曟椂鑷姩鎷熷悎銆侻anual 妯″紡鍙湪鐐瑰嚮 `Fit` 鍚庢嫙鍚堛€?
 ## Mapping
 
-输入：
-
-- WiRE WDF mapping。
-- stacked TXT，列为 `#X #Y #Wave #Intensity`。
-
-Mapping 会把 stacked spectra 展开为宽表，包含 wavenumber、每条谱、平均强度和归一化强度。
-
-重要规则：
-
-- `Every N for preview` 只影响 Raw data 预览。
-- `Legend` 只影响 Raw data tab。
-- 选中谱的原始列号必须保留。
-- `Load to Insitu Echem` 是内存传递，不生成隐藏文件。
-
+杈撳叆锛?
+- WiRE WDF mapping銆?- stacked TXT锛屽垪涓?`#X #Y #Wave #Intensity`銆?
+Mapping 浼氭妸 stacked spectra 灞曞紑涓哄琛紝鍖呭惈 wavenumber銆佹瘡鏉¤氨銆佸钩鍧囧己搴﹀拰褰掍竴鍖栧己搴︺€?
+閲嶈瑙勫垯锛?
+- `Every N for preview` 鍙奖鍝?Raw data 棰勮銆?- `Legend` 鍙奖鍝?Raw data tab銆?- 閫変腑璋辩殑鍘熷鍒楀彿蹇呴』淇濈暀銆?- `Load to Insitu Echem` 鏄唴瀛樹紶閫掞紝涓嶇敓鎴愰殣钘忔枃浠躲€?
 ## Insitu EChem
 
-输入：
-
+杈撳叆锛?
 - `#Time #Wave #Intensity`
 - `#Sequence #Wave #Intensity`
 - WDF sequence
 
-当输入是 `#Sequence` 或 mapping 内存传递时，Time mode 必须禁用，并强制 Sequence mode。序列标签必须保留。
-
+褰撹緭鍏ユ槸 `#Sequence` 鎴?mapping 鍐呭瓨浼犻€掓椂锛孴ime mode 蹇呴』绂佺敤锛屽苟寮哄埗 Sequence mode銆傚簭鍒楁爣绛惧繀椤讳繚鐣欍€?
 ## Electrical
 
-Electrical 从 notebook 工作流迁移为 GUI。它用于查看 V_Gate、V_Drain、I_Gate、I_Drain 四路信号，并自动总结 V_Gate/V_Drain 的 const/pulse 信息。
-
-详细见 [Raman Electrical](raman-electrical.md)。
+Electrical 浠?notebook 宸ヤ綔娴佽縼绉讳负 GUI銆傚畠鐢ㄤ簬鏌ョ湅 V_Gate銆乂_Drain銆両_Gate銆両_Drain 鍥涜矾淇″彿锛屽苟鑷姩鎬荤粨 V_Gate/V_Drain 鐨?const/pulse 淇℃伅銆?
+璇︾粏瑙?[Raman Electrical](raman-electrical.md)銆?

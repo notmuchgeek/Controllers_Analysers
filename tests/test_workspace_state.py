@@ -144,6 +144,7 @@ class AppStateGuiTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             frame = self.make_frame(Path(tmp) / "app_state.json")
             try:
+                frame.show_workspace("Raman")
                 raman = frame.workspace_panels["Raman"]
                 old_state = [
                     {"selection": 2, "pages": ["Substrate Baseline", "Mapping", "Insitu EChem"]},
@@ -162,6 +163,7 @@ class AppStateGuiTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             frame = self.make_frame(Path(tmp) / "app_state.json")
             try:
+                frame.show_workspace("Raman")
                 raman = frame.workspace_panels["Raman"]
                 electrical_state = [
                     {"selection": 3, "pages": ["Baseline", "Mapping", "Insitu EChem", "Electrical"]},
@@ -179,6 +181,7 @@ class AppStateGuiTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             frame = self.make_frame(Path(tmp) / "app_state.json")
             try:
+                frame.show_workspace("TPC")
                 panel = frame.workspace_panels["TPC"]
                 panel.output_is_on = True
                 panel.command_running = True
@@ -195,5 +198,42 @@ class AppStateGuiTests(unittest.TestCase):
                 self.assertFalse(panel.command_running)
                 self.assertTrue(panel.red_ld.IsChecked())
                 self.assertEqual(panel.tc_com_port.GetValue(), "COM9")
+            finally:
+                frame.Destroy()
+
+    def test_non_active_workspace_is_loaded_on_first_show(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            frame = self.make_frame(Path(tmp) / "app_state.json")
+            try:
+                self.assertIn("AFM/KPFM", frame.workspace_panels)
+                self.assertNotIn("Raman", frame.workspace_panels)
+
+                frame.show_workspace("Raman")
+
+                self.assertIn("Raman", frame.workspace_panels)
+                self.assertEqual(frame.active_workspace, "Raman")
+            finally:
+                frame.Destroy()
+
+    def test_unbuilt_workspace_state_is_preserved_on_save(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            state_path = Path(tmp) / "app_state.json"
+            save_app_state(
+                state_path,
+                {
+                    "restore_level": RESTORE_PARAMETERS,
+                    "last_workspace": "AFM/KPFM",
+                    "tabs": {"Raman": [{"selection": 3, "pages": ["Baseline", "Mapping", "Insitu EChem", "Electrical"]}]},
+                    "parameters": {"Raman": {"electrical": {"raw_preview_s": "12.5"}}},
+                },
+            )
+            frame = self.make_frame(state_path)
+            try:
+                frame.save_current_app_state()
+                state = load_app_state(state_path)
+
+                self.assertIn("Raman", state["tabs"])
+                self.assertIn("Raman", state["parameters"])
+                self.assertEqual(state["parameters"]["Raman"]["electrical"]["raw_preview_s"], "12.5")
             finally:
                 frame.Destroy()

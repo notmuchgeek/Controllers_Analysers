@@ -28,6 +28,12 @@ The application is layered around a wxPython GUI shell and independent workspace
 - `tpc_panel.py`: TPC laser-diode control UI.
 - `raman_panel.py`: Raman Baseline, Mapping, Insitu EChem, and Electrical UI.
 
+## Startup Flow
+
+The main frame lazy-loads workspace panels. On launch it builds only the restored last workspace, then constructs APS, TPC, Raman, or other hidden workspaces the first time the user opens them from the `View` menu. Saved tab and parameter state for unbuilt workspaces is preserved in `app_state.json` until those panels are created.
+
+Within AFM/KPFM, the Controller tab is available immediately and the heavier Analysis tab is built only when selected. The bundled default intensity calibration starts after the first UI pass and fits on a background thread; intensity-mode hardware actions are blocked until that fit is complete.
+
 ## State Flow
 
 User actions update GUI controls. Panels read controls into settings objects or core function arguments. Core modules return structured results. GUI panels render plots/tables/logs and enable save actions.
@@ -43,4 +49,3 @@ Hardware control is stricter: `START` creates a frozen run snapshot before openi
 - `Parameters`: workspace, tabs, and panel-supported typed values/paths.
 
 Nested notebooks are restored by page names, not recursive order alone.
-

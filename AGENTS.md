@@ -4,7 +4,7 @@ This file is the source of truth for coding agents working inside the `ca_app` p
 
 ## 1. Active Project
 
-The active runnable application is the packaged v16.1.260606.2115 application:
+The active runnable application is the packaged v16.2.260606.2137 application:
 
 Version format:
 
@@ -12,12 +12,12 @@ Version format:
 v<major>.<minor>.<YYMMDD>.<HHMM>
 ```
 
-For `v16.1.260606.2115`:
+For `v16.2.260606.2137`:
 
 - `v16` is the larger version change.
-- `.1` is the smaller version number within v16.
+- `.2` is the smaller version number within v16.
 - `260606` is the date of the change in YYMMDD format.
-- `2115` is the exact 24-hour time when Codex, the coding agent, changed code or project files.
+- `2137` is the exact 24-hour time when Codex, the coding agent, changed code or project files.
 
 Whenever Codex implements changes from a plan, increment the smaller version number, update the date, update the exact 24-hour time, and propagate the new version to the program window title, About/Versions text, package metadata, and project documentation.
 
@@ -198,7 +198,7 @@ tests/
 
 ## 5. Refactor Rule
 
-The v16.1.260606.2115 application separates the main shell from independent workspace panels. The AFM/KPFM controller panel still intentionally keeps the tested Keithley runtime behavior together to avoid changing hardware semantics during naming and structure cleanup.
+The v16.2.260606.2137 application separates the main shell from independent workspace panels. The AFM/KPFM controller panel still intentionally keeps the tested Keithley runtime behavior together to avoid changing hardware semantics during naming and structure cleanup.
 
 When refactoring further:
 
@@ -719,6 +719,7 @@ Manual GUI checks without hardware:
 26. A normal finish, STOP, or exception sends current 0 and output OFF before serial close.
 27. Changing calibration fit method/range during a running sequence does not affect the active run current; changes apply only to preview and the next `START`.
 28. Keithley run data is saved only via `Save Keithley CSV`.
+
 
 
 

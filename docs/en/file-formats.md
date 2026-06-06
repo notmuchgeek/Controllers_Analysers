@@ -1,6 +1,6 @@
-# File Formats
+﻿# File Formats
 
-Version: `v16.1.260606.2115`
+Version: `v16.2.260606.2137`
 
 This document lists the user-facing file formats expected by the application.
 
@@ -103,3 +103,4 @@ Export behavior is intentionally explicit:
 - AFM/KPFM `Save Keithley CSV` exports measured run data only when clicked.
 - Raman analysis buttons save their corresponding PNG and CSV/TXT outputs.
 - Sequence completion must not auto-create run-data files.
+

@@ -1,13 +1,13 @@
-# Architecture
+﻿# Architecture
 
-Version: `v16.1.260606.2115`
+Version: `v16.2.260606.2137`
 
 This file is retained as a compatibility entry point for older links.
 
 Use the current bilingual architecture documentation:
 
 - [English architecture](en/architecture.md)
-- [中文架构说明](zh-CN/architecture.md)
+- [涓枃鏋舵瀯璇存槑](zh-CN/architecture.md)
 
 The active architecture summary is:
 
@@ -19,3 +19,4 @@ The active architecture summary is:
 - `src/ca_app/runtime/` and `src/ca_app/io/` are planned extraction areas.
 
 Raman Electrical is implemented in the Raman workspace; it is not a reserved blank tab.
+

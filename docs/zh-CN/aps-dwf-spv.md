@@ -1,23 +1,14 @@
-# APS、DWF、DOS 和 SPV
+﻿# APS銆丏WF銆丏OS 鍜?SPV
 
-版本：`v16.1.260606.2115`
+鐗堟湰锛歚v16.2.260606.2137`
 
-APS 工作区用于 photoemission 和表面分析相关的数据处理，包括 APS、DWF、workfunction、DOS 和 SPV。
+APS 宸ヤ綔鍖虹敤浜?photoemission 鍜岃〃闈㈠垎鏋愮浉鍏崇殑鏁版嵁澶勭悊锛屽寘鎷?APS銆丏WF銆亀orkfunction銆丏OS 鍜?SPV銆?
+## GUI 椋庢牸
 
-## GUI 风格
+璇ュ伐浣滃尯浣跨敤鍥哄畾宸︿晶鍙傛暟銆佸彸渚ч瑙堢殑甯冨眬銆俁aman Mapping銆両nsitu EChem 鍜?Electrical 鐨?GUI 涔熷簲灏介噺淇濇寔绫讳技椋庢牸銆?
+## 鍔熻兘鑼冨洿
 
-该工作区使用固定左侧参数、右侧预览的布局。Raman Mapping、Insitu EChem 和 Electrical 的 GUI 也应尽量保持类似风格。
+- 鍔犺浇瀹為獙鏁版嵁銆?- 璁剧疆缁熻鍜屾嫙鍚堝弬鏁般€?- 棰勮澶勭悊缁撴灉銆?- 瀵煎嚭鍥惧拰 CSV銆?- 淇濈暀閫傚悎蹇€熸鏌ョ殑绱у噾琛ㄦ牸鍜屽浘褰€?
+## 缁存姢娉ㄦ剰
 
-## 功能范围
-
-- 加载实验数据。
-- 设置统计和拟合参数。
-- 预览处理结果。
-- 导出图和 CSV。
-- 保留适合快速检查的紧凑表格和图形。
-
-## 维护注意
-
-- 不要把其他工作区的 restore 状态错误套到 APS notebook 上。
-- 新增 nested notebook 时要按页面名称恢复 tab，而不是只按递归顺序。
-- 修改统计参数行为时应检查相关预览和导出是否同步。
+- 涓嶈鎶婂叾浠栧伐浣滃尯鐨?restore 鐘舵€侀敊璇鍒?APS notebook 涓娿€?- 鏂板 nested notebook 鏃惰鎸夐〉闈㈠悕绉版仮澶?tab锛岃€屼笉鏄彧鎸夐€掑綊椤哄簭銆?- 淇敼缁熻鍙傛暟琛屼负鏃跺簲妫€鏌ョ浉鍏抽瑙堝拰瀵煎嚭鏄惁鍚屾銆?

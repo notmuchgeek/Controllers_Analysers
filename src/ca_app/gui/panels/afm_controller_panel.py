@@ -139,6 +139,9 @@ class AfmControllerPanel(wx.Panel):
         self.calibration_path: str = ""
         self.calibration_model: Optional[LaserCalibrationModel] = None
         self.calibration_reload_timer = None
+        self.calibration_loading = False
+        self.calibration_load_generation = 0
+        self.calibration_background_thread = None
 
         self.manual_off_checks = {}
         self.manual_off_times = {}
@@ -154,7 +157,6 @@ class AfmControllerPanel(wx.Panel):
 
         self.cb_current_mode.SetValue(True)
         self.cb_step_control.SetValue(True)
-        self.load_default_calibration_if_available()
         self.initialising = False
 
         self.update_source_mode_controls()
@@ -163,6 +165,7 @@ class AfmControllerPanel(wx.Panel):
         self.update_preview()
         self.update_calibration_plot()
         self.update_function_preview_plot()
+        wx.CallAfter(self.load_default_calibration_if_available)
 
     # ------------------------------------------------------------------
     # GUI construction
@@ -974,6 +977,8 @@ class AfmControllerPanel(wx.Panel):
             )
 
     def require_calibration(self) -> LaserCalibrationModel:
+        if self.calibration_loading:
+            raise ValueError("Intensity mode requires the calibration fit to finish loading first.")
         if self.calibration_model is None:
             raise ValueError("Intensity mode requires a calibration CSV to be loaded first.")
         return self.calibration_model
@@ -1612,7 +1617,8 @@ class AfmControllerPanel(wx.Panel):
         if self.calibration_model is None:
             self.ax_calibration.set_xlim(0, 1)
             self.ax_calibration.set_ylim(0, 1)
-            self.ax_calibration.text(0.5, 0.5, "No intensity calibration loaded", ha="center", va="center")
+            message = "Loading intensity calibration..." if self.calibration_loading else "No intensity calibration loaded"
+            self.ax_calibration.text(0.5, 0.5, message, ha="center", va="center")
             self.ax_calibration.set_xlabel("Current / mA")
             self.ax_calibration.set_ylabel("Intensity / mW")
             self.ax_calibration.grid(True)
@@ -1725,10 +1731,9 @@ class AfmControllerPanel(wx.Panel):
         except Exception:
             pass
 
-    def build_calibration_model_from_path(self, path, method):
+    @staticmethod
+    def build_calibration_model(path, method, x_min, x_max, progress_callback=None):
         current, intensity = load_intensity_csv(path)
-        x_min = self.parse_optional_float_from_ctrl(self.tc_calibration_xmin, "Calibration fit X min")
-        x_max = self.parse_optional_float_from_ctrl(self.tc_calibration_xmax, "Calibration fit X max")
         if x_min is not None and x_min < 0:
             raise ValueError("Calibration fit X min must not be below zero.")
         if x_max is not None and x_max < 0:
@@ -1743,19 +1748,36 @@ class AfmControllerPanel(wx.Panel):
                 raise ValueError("Calibration fit range must include at least two calibration points.")
             current = current[mask]
             intensity = intensity[mask]
-            self.calibration_fit_progress(
-                f"Calibration fit range applied: {lo:.6g} to {hi:.6g} mA, {len(current)} points."
-            )
+            if progress_callback is not None:
+                progress_callback(f"Calibration fit range applied: {lo:.6g} to {hi:.6g} mA, {len(current)} points.")
         return LaserCalibrationModel(
             current,
             intensity,
             method=method,
+            progress_callback=progress_callback if method in EMPIRICAL_CALIBRATION_METHODS else None,
+        )
+
+    def current_calibration_fit_range(self):
+        return (
+            self.parse_optional_float_from_ctrl(self.tc_calibration_xmin, "Calibration fit X min"),
+            self.parse_optional_float_from_ctrl(self.tc_calibration_xmax, "Calibration fit X max"),
+        )
+
+    def build_calibration_model_from_path(self, path, method):
+        x_min, x_max = self.current_calibration_fit_range()
+        return self.build_calibration_model(
+            path,
+            method,
+            x_min,
+            x_max,
             progress_callback=self.calibration_fit_progress if method in EMPIRICAL_CALIBRATION_METHODS else None,
         )
 
     def reload_calibration_model(self, show_errors=True):
         if not self.calibration_path:
             return False
+        self.calibration_load_generation += 1
+        self.calibration_loading = False
         method = self.fit_method_choice.GetStringSelection()
         try:
             self.calibration_model = self.build_calibration_model_from_path(self.calibration_path, method)
@@ -1781,14 +1803,58 @@ class AfmControllerPanel(wx.Panel):
         self.calibration_path = default_path
         method = self.fit_method_choice.GetStringSelection()
         try:
-            self.calibration_model = self.build_calibration_model_from_path(default_path, method)
+            x_min, x_max = self.current_calibration_fit_range()
         except Exception as exc:
             self.calibration_model = None
             self.calibration_file_label.SetLabel("No calibration CSV loaded")
             self.log(f"Could not auto-load {DEFAULT_CALIBRATION_FILENAME}: {exc}")
             return
-        self.calibration_file_label.SetLabel(os.path.basename(default_path))
-        self.log(f"Auto-loaded calibration CSV: {default_path} using {method}.")
+        self.start_background_calibration_load(default_path, method, x_min, x_max)
+
+    def start_background_calibration_load(self, path, method, x_min, x_max):
+        self.calibration_load_generation += 1
+        generation = self.calibration_load_generation
+        self.calibration_loading = True
+        self.calibration_model = None
+        self.calibration_file_label.SetLabel(f"Loading {os.path.basename(path)}...")
+        self.log(f"Loading default calibration CSV in background: {path} using {method}.")
+
+        def progress(message):
+            wx.CallAfter(self.log_background_calibration_progress, generation, message)
+
+        def worker():
+            try:
+                model = self.build_calibration_model(path, method, x_min, x_max, progress_callback=progress)
+            except Exception as exc:
+                wx.CallAfter(self.on_background_calibration_finished, generation, path, method, None, exc)
+                return
+            wx.CallAfter(self.on_background_calibration_finished, generation, path, method, model, None)
+
+        self.calibration_background_thread = threading.Thread(target=worker, daemon=True)
+        self.calibration_background_thread.start()
+
+    def log_background_calibration_progress(self, generation, message):
+        if generation == self.calibration_load_generation:
+            self.log(message)
+
+    def on_background_calibration_finished(self, generation, path, method, model, error):
+        if generation != self.calibration_load_generation:
+            return
+        if path != self.calibration_path or method != self.fit_method_choice.GetStringSelection():
+            return
+        self.calibration_loading = False
+        if error is not None:
+            self.calibration_model = None
+            self.calibration_file_label.SetLabel("No calibration CSV loaded")
+            self.log(f"Could not auto-load {DEFAULT_CALIBRATION_FILENAME}: {error}")
+            self.update_calibration_plot()
+            self.update_preview()
+            return
+        self.calibration_model = model
+        self.calibration_file_label.SetLabel(os.path.basename(path))
+        self.log(f"Auto-loaded calibration CSV: {path} using {method}.")
+        self.update_calibration_plot()
+        self.update_preview()
 
     def on_save_source_csv(self, event):
         if self.cb_quick_test.IsChecked():
@@ -2264,9 +2330,13 @@ class AfmControllerPanel(wx.Panel):
         if source_mode == SOURCE_INTENSITY:
             if not self.calibration_path:
                 raise ValueError("Intensity mode requires a calibration CSV to be loaded first.")
+            if self.calibration_loading:
+                raise ValueError("Intensity mode requires the calibration fit to finish loading before START.")
+            if self.calibration_model is None:
+                raise ValueError("Intensity mode requires a completed calibration fit before START.")
             calibration_method = self.fit_method_choice.GetStringSelection()
             calibration_path = self.calibration_path
-            calibration_model = self.build_calibration_model_from_path(calibration_path, calibration_method)
+            calibration_model = self.calibration_model
             fit_x_min = self.parse_optional_float_from_ctrl(self.tc_calibration_xmin, "Calibration fit X min")
             fit_x_max = self.parse_optional_float_from_ctrl(self.tc_calibration_xmax, "Calibration fit X max")
         run_context = {

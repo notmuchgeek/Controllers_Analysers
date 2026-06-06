@@ -1,6 +1,6 @@
-# Maintenance Checklist
+﻿# Maintenance Checklist
 
-Version: `v16.1.260606.2115`
+Version: `v16.2.260606.2137`
 
 Use this checklist before handing back code or documentation changes.
 
@@ -45,7 +45,7 @@ rg -n "<old-version>|<old-package-version>|<stale-electrical-placeholder>" AGENT
 Search for current version placement:
 
 ```cmd
-rg -n "v16\\.1\\.260606\\.2115|16\\.1\\.260606\\.2115|APP_VERSION|__version__|version =" AGENTS.md README.md README.zh-CN.md docs src pyproject.toml
+rg -n "v16\\.2\\.260606\\.2137|16\\.2\\.260606\\.2137|APP_VERSION|__version__|version =" AGENTS.md README.md README.zh-CN.md docs src pyproject.toml
 ```
 
 ## Documentation Parity
@@ -67,3 +67,5 @@ Remove generated caches if they were created during checks:
 - `.pyc`
 
 Do not delete user data files or generated scientific outputs unless explicitly requested.
+
+

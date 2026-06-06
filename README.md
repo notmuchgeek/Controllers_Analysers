@@ -1,8 +1,8 @@
-# Controllers & Analysers
+﻿# Controllers & Analysers
 
-**English** | [简体中文](README.zh-CN.md)
+**English** | [绠€浣撲腑鏂嘳(README.zh-CN.md)
 
-Version: `v16.1.260606.2115`
+Version: `v16.2.260606.2137`
 
 Controllers & Analysers is a wxPython desktop application for laboratory control and scientific analysis workflows. It combines Keithley-based AFM/KPFM control, CPD image analysis, APS/DWF/SPV analysis, TPC laser-diode control, Raman baseline correction, Raman mapping, Raman in situ electrochemical sequence analysis, and Raman Electrical current-voltage preview tools.
 
@@ -11,7 +11,7 @@ Controllers & Analysers is a wxPython desktop application for laboratory control
 The detailed documentation is split by audience and language:
 
 - [English documentation index](docs/en/index.md)
-- [中文文档索引](docs/zh-CN/index.md)
+- [涓枃鏂囨。绱㈠紩](docs/zh-CN/index.md)
 - [Coding-agent instructions](AGENTS.md)
 
 Useful starting points:
@@ -65,7 +65,7 @@ python run_ca_app.py
 The window title should show:
 
 ```text
-Controller & Analysers v16.1.260606.2115
+Controller & Analysers v16.2.260606.2137
 ```
 
 ## Test
@@ -85,4 +85,5 @@ The v16 series uses:
 v<major>.<minor>.<YYMMDD>.<HHMM>
 ```
 
-For `v16.1.260606.2115`, `v16` is the larger version series, `1` is the smaller version inside v16, `260606` is the edit date, and `2115` is the exact 24-hour edit time. See [Versioning](docs/en/versioning.md).
+For `v16.2.260606.2137`, `v16` is the larger version series, `2` is the smaller version inside v16, `260606` is the edit date, and `2137` is the exact 24-hour edit time. See [Versioning](docs/en/versioning.md).
+

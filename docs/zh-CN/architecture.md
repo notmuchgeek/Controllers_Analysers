@@ -1,82 +1,61 @@
-# 架构说明
+﻿# 鏋舵瀯璇存槑
 
-版本：`v16.1.260606.2115`
+鐗堟湰锛歚v16.2.260606.2137`
 
-本项目的结构可以从上到下理解为：启动脚本、应用入口、主窗口、工作区 panel、核心算法、硬件边界、资源和测试。
-
-## 顶层入口
+鏈」鐩殑缁撴瀯鍙互浠庝笂鍒颁笅鐞嗚В涓猴細鍚姩鑴氭湰銆佸簲鐢ㄥ叆鍙ｃ€佷富绐楀彛銆佸伐浣滃尯 panel銆佹牳蹇冪畻娉曘€佺‖浠惰竟鐣屻€佽祫婧愬拰娴嬭瘯銆?
+## 椤跺眰鍏ュ彛
 
 ```text
 run_ca_app.py
 ```
 
-从源码目录启动 GUI。
-
+浠庢簮鐮佺洰褰曞惎鍔?GUI銆?
 ```text
 src/ca_app/app.py
 ```
 
-创建 wxPython app 和主窗口。
-
+鍒涘缓 wxPython app 鍜屼富绐楀彛銆?
 ```text
 src/ca_app/gui/main_frame.py
 ```
 
-主窗口 shell，负责窗口标题、View 菜单、Restore 菜单、About 菜单、工作区切换和 `app_state.json`。
-
-## GUI 工作区
-
+涓荤獥鍙?shell锛岃礋璐ｇ獥鍙ｆ爣棰樸€乂iew 鑿滃崟銆丷estore 鑿滃崟銆丄bout 鑿滃崟銆佸伐浣滃尯鍒囨崲鍜?`app_state.json`銆?
+## GUI 宸ヤ綔鍖?
 ```text
 src/ca_app/gui/panels/
 ```
 
-每个主要功能尽量放在独立 panel 中：
+姣忎釜涓昏鍔熻兘灏介噺鏀惧湪鐙珛 panel 涓細
 
-- `afm_kpfm_panel.py`：AFM/KPFM notebook。
-- `afm_controller_panel.py`：Keithley 控制器 GUI 和运行逻辑。
-- `afm_analysis_panel.py`：CPD 图像分析。
-- `aps_panel.py`：APS/DWF/DOS/SPV 分析。
-- `raman_panel.py`：Raman Baseline、Mapping、Insitu EChem、Electrical。
-- `tpc_panel.py`：TPC 激光二极管控制。
-
-多数工作区采用固定布局：左侧参数，右上预览，右下 log。
-
-## 核心模块
+- `afm_kpfm_panel.py`锛欰FM/KPFM notebook銆?- `afm_controller_panel.py`锛欿eithley 鎺у埗鍣?GUI 鍜岃繍琛岄€昏緫銆?- `afm_analysis_panel.py`锛欳PD 鍥惧儚鍒嗘瀽銆?- `aps_panel.py`锛欰PS/DWF/DOS/SPV 鍒嗘瀽銆?- `raman_panel.py`锛歊aman Baseline銆丮apping銆両nsitu EChem銆丒lectrical銆?- `tpc_panel.py`锛歍PC 婵€鍏変簩鏋佺鎺у埗銆?
+澶氭暟宸ヤ綔鍖洪噰鐢ㄥ浐瀹氬竷灞€锛氬乏渚у弬鏁帮紝鍙充笂棰勮锛屽彸涓?log銆?
+## 鏍稿績妯″潡
 
 ```text
 src/ca_app/core/
 ```
 
-这里放非 GUI 的算法和数据处理：
-
-- `intensity_profile_tools.py`：电流-光强校准、函数表达式、曲线生成。
-- `calibration_models.py`：校准模型稳定导入面。
-- `function_profiles.py`：函数曲线稳定导入面。
-- `raman_baseline.py`：Raman 基线校正。
-- `raman_mapping.py`：Raman mapping 读取、unstack、导出。
-- `raman_insitu_echem.py`：Raman 序列峰分析。
-
-## 硬件边界
+杩欓噷鏀鹃潪 GUI 鐨勭畻娉曞拰鏁版嵁澶勭悊锛?
+- `intensity_profile_tools.py`锛氱數娴?鍏夊己鏍″噯銆佸嚱鏁拌〃杈惧紡銆佹洸绾跨敓鎴愩€?- `calibration_models.py`锛氭牎鍑嗘ā鍨嬬ǔ瀹氬鍏ラ潰銆?- `function_profiles.py`锛氬嚱鏁版洸绾跨ǔ瀹氬鍏ラ潰銆?- `raman_baseline.py`锛歊aman 鍩虹嚎鏍℃銆?- `raman_mapping.py`锛歊aman mapping 璇诲彇銆乽nstack銆佸鍑恒€?- `raman_insitu_echem.py`锛歊aman 搴忓垪宄板垎鏋愩€?
+## 纭欢杈圭晫
 
 ```text
 src/ca_app/hardware/keithley_serial.py
 ```
 
-保存串口设置和 Keithley SCPI 原语。当前 AFM/KPFM 控制器仍把经过测试的运行编排保留在 panel 内，避免在重构时改变硬件语义。
-
-## 未来抽取区域
+淇濆瓨涓插彛璁剧疆鍜?Keithley SCPI 鍘熻銆傚綋鍓?AFM/KPFM 鎺у埗鍣ㄤ粛鎶婄粡杩囨祴璇曠殑杩愯缂栨帓淇濈暀鍦?panel 鍐咃紝閬垮厤鍦ㄩ噸鏋勬椂鏀瑰彉纭欢璇箟銆?
+## 鏈潵鎶藉彇鍖哄煙
 
 ```text
 src/ca_app/runtime/
 src/ca_app/io/
 ```
 
-这些目录用于以后把 worker service 和导入/导出边界从 GUI 中抽出来。当前不要为了整理目录而改变已经测试过的硬件行为。
-
-## 测试
+杩欎簺鐩綍鐢ㄤ簬浠ュ悗鎶?worker service 鍜屽鍏?瀵煎嚭杈圭晫浠?GUI 涓娊鍑烘潵銆傚綋鍓嶄笉瑕佷负浜嗘暣鐞嗙洰褰曡€屾敼鍙樺凡缁忔祴璇曡繃鐨勭‖浠惰涓恒€?
+## 娴嬭瘯
 
 ```text
 tests/
 ```
 
-只放非硬件自动测试。硬件测试必须由用户明确确认。
+鍙斁闈炵‖浠惰嚜鍔ㄦ祴璇曘€傜‖浠舵祴璇曞繀椤荤敱鐢ㄦ埛鏄庣‘纭銆?

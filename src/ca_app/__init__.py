@@ -1,3 +1,4 @@
-"""Controllers & Analysers application package."""
+﻿"""Controllers & Analysers application package."""
 
-__version__ = "16.1.260606.2115"
+__version__ = "16.2.260606.2137"
+

@@ -1,6 +1,6 @@
-# Calibration And Function Profiles
+﻿# Calibration And Function Profiles
 
-Version: `v16.1.260606.2115`
+Version: `v16.2.260606.2137`
 
 This document describes the two transformation layers used by the AFM/KPFM controller: current-intensity calibration and function-profile generation.
 
@@ -94,3 +94,4 @@ When Function control is enabled:
 ## Runtime Safety
 
 Function arrays and calibration models are frozen at `START`. GUI edits after `START` update previews only and must not change the active output current.
+

@@ -1,40 +1,22 @@
-# 状态恢复
+﻿# 鐘舵€佹仮澶?
+鐗堟湰锛歚v16.2.260606.2137`
 
-版本：`v16.1.260606.2115`
+Restore 鑿滃崟鎺у埗鑷姩 `app_state.json` 鎭㈠銆傚畠涓嶅悓浜庣敤鎴锋墜鍔ㄩ€夋嫨鐨?Save Parameters / Load Parameters 鏂囦欢銆?
+## 涓夌妯″紡
 
-Restore 菜单控制自动 `app_state.json` 恢复。它不同于用户手动选择的 Save Parameters / Load Parameters 文件。
+`View`锛?
+- 鍙仮澶嶄笂娆℃墦寮€鐨勯《灞傚伐浣滃尯銆?
+`Tab`锛?
+- 鎭㈠宸ヤ綔鍖哄拰閫変腑鐨?notebook tab銆?
+`Parameters`锛?
+- 鎭㈠宸ヤ綔鍖恒€乼ab銆佸凡鍔犺浇璺緞銆佹枃鏈銆乧hoice銆乧heckbox 绛夊凡鏀寔鐨勫弬鏁般€?
+## 绂佹鎭㈠鐨勭姸鎬?
+涓嶈淇濆瓨鎴栨仮澶嶏細
 
-## 三种模式
+- 褰撳墠纭欢杈撳嚭鏄惁 ON銆?- measured voltage銆?- runtime/status text銆?- log text銆?- live plot data銆?- run data rows銆?
+鍔犺浇鍙傛暟鎴?app-state restore 缁濅笉鑳芥墦寮€纭欢杈撳嚭銆?
+## 缁存姢瑙勫垯
 
-`View`：
-
-- 只恢复上次打开的顶层工作区。
-
-`Tab`：
-
-- 恢复工作区和选中的 notebook tab。
-
-`Parameters`：
-
-- 恢复工作区、tab、已加载路径、文本框、choice、checkbox 等已支持的参数。
-
-## 禁止恢复的状态
-
-不要保存或恢复：
-
-- 当前硬件输出是否 ON。
-- measured voltage。
-- runtime/status text。
-- log text。
-- live plot data。
-- run data rows。
-
-加载参数或 app-state restore 绝不能打开硬件输出。
-
-## 维护规则
-
-新增工作区、nested notebook 或 preview tab 时，必须检查 restore 行为。
-
-Tab restore 应按页面名称匹配 notebook，而不是依赖递归顺序。否则新增嵌套 notebook 后，旧状态可能恢复到错误的 tab。
-
-Parameter restore 应避免在恢复字段后重新加载文件，因为重新加载可能覆盖用户已经恢复的输入值。
+鏂板宸ヤ綔鍖恒€乶ested notebook 鎴?preview tab 鏃讹紝蹇呴』妫€鏌?restore 琛屼负銆?
+Tab restore 搴旀寜椤甸潰鍚嶇О鍖归厤 notebook锛岃€屼笉鏄緷璧栭€掑綊椤哄簭銆傚惁鍒欐柊澧炲祵濂?notebook 鍚庯紝鏃х姸鎬佸彲鑳芥仮澶嶅埌閿欒鐨?tab銆?
+Parameter restore 搴旈伩鍏嶅湪鎭㈠瀛楁鍚庨噸鏂板姞杞芥枃浠讹紝鍥犱负閲嶆柊鍔犺浇鍙兘瑕嗙洊鐢ㄦ埛宸茬粡鎭㈠鐨勮緭鍏ュ€笺€?

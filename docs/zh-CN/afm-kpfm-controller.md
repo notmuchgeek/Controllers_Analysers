@@ -1,12 +1,10 @@
-# AFM/KPFM 控制器
+﻿# AFM/KPFM 鎺у埗鍣?
+鐗堟湰锛歚v16.2.260606.2137`
 
-版本：`v16.1.260606.2115`
+AFM/KPFM Controller 鏄湰椤圭洰涓渶闇€瑕佸畨鍏ㄧ淮鎶ょ殑宸ヤ綔鍖猴紝鍥犱负瀹冨彲浠ョ洿鎺ユ帶鍒?Keithley 杈撳嚭銆?
+## 纭欢妯″紡
 
-AFM/KPFM Controller 是本项目中最需要安全维护的工作区，因为它可以直接控制 Keithley 输出。
-
-## 硬件模式
-
-Keithley 的核心模式：
+Keithley 鐨勬牳蹇冩ā寮忥細
 
 ```text
 Source: current
@@ -16,51 +14,26 @@ Default baudrate: 38400
 Default compliance: 5.0 V
 ```
 
-即使用户选择 Intensity mode，Keithley 仍然只接收电流命令。光强会先根据校准模型转换成电流。
+鍗充娇鐢ㄦ埛閫夋嫨 Intensity mode锛孠eithley 浠嶇劧鍙帴鏀剁數娴佸懡浠ゃ€傚厜寮轰細鍏堟牴鎹牎鍑嗘ā鍨嬭浆鎹㈡垚鐢垫祦銆?
+## GUI 鍖哄煙
 
-## GUI 区域
+宸︿晶鍖呭惈锛?
+- Hardware 璁剧疆銆?- Source mode銆?- Quick Test銆?- Recurrent/Step timing銆?- Intensity calibration銆?- Function control銆?- 淇濆瓨鍜?START/STOP 鎸夐挳銆?
+鍙充晶鍖呭惈锛?
+- Source profile銆?- Intensity calibration銆?- Function profile銆?- Live voltage銆?- Status/log銆?
+## START 蹇収
 
-左侧包含：
+鐐瑰嚮 `START` 鏃跺繀椤绘瀯寤哄喕缁撳揩鐓с€傚揩鐓у寘鎷覆鍙ｈ缃€乻ource mode銆佹牎鍑嗘ā鍨嬨€佸嚱鏁版洸绾垮拰瀹屾暣 sequence steps銆?
+杩愯绾跨▼涓嶈兘鍦ㄨ繍琛屼腑閲嶆柊璇诲彇 live GUI 鎺т欢銆傝繍琛屼腑鐢ㄦ埛淇敼鏍″噯銆佸嚱鏁般€侀瑙堝弬鏁板彧褰卞搷涓嬩竴娆?`START`銆?
+## OFF 闃舵
 
-- Hardware 设置。
-- Source mode。
-- Quick Test。
-- Recurrent/Step timing。
-- Intensity calibration。
-- Function control。
-- 保存和 START/STOP 按钮。
-
-右侧包含：
-
-- Source profile。
-- Intensity calibration。
-- Function profile。
-- Live voltage。
-- Status/log。
-
-## START 快照
-
-点击 `START` 时必须构建冻结快照。快照包括串口设置、source mode、校准模型、函数曲线和完整 sequence steps。
-
-运行线程不能在运行中重新读取 live GUI 控件。运行中用户修改校准、函数、预览参数只影响下一次 `START`。
-
-## OFF 阶段
-
-OFF 阶段只能关闭输出并写入软件已知的 0 点。不能发送 `:READ?`、`:INIT` 或 `:FETCH?`。
-
-原因是 Keithley 在 output off 时查询测量可能触发 error `803`。
-
+OFF 闃舵鍙兘鍏抽棴杈撳嚭骞跺啓鍏ヨ蒋浠跺凡鐭ョ殑 0 鐐广€備笉鑳藉彂閫?`:READ?`銆乣:INIT` 鎴?`:FETCH?`銆?
+鍘熷洜鏄?Keithley 鍦?output off 鏃舵煡璇㈡祴閲忓彲鑳借Е鍙?error `803`銆?
 ## Function Control
 
-Function control 启用时：
+Function control 鍚敤鏃讹細
 
-- 自动选择 Function profile preview。
-- Recurrent/Step ON value 输入框置灰。
-- 程序不能解析置灰的 ON value。
-- ON duration 仍决定函数注入时间窗口。
+- 鑷姩閫夋嫨 Function profile preview銆?- Recurrent/Step ON value 杈撳叆妗嗙疆鐏般€?- 绋嬪簭涓嶈兘瑙ｆ瀽缃伆鐨?ON value銆?- ON duration 浠嶅喅瀹氬嚱鏁版敞鍏ユ椂闂寸獥鍙ｃ€?
+## 淇濆瓨琛屼负
 
-## 保存行为
-
-- `Save CSV (Source)` 保存计划输出曲线。
-- `Save Keithley CSV` 保存用户手动选择保存的运行测量数据。
-- sequence 完成时不能自动生成 `keithley_run_data_*.csv`。
+- `Save CSV (Source)` 淇濆瓨璁″垝杈撳嚭鏇茬嚎銆?- `Save Keithley CSV` 淇濆瓨鐢ㄦ埛鎵嬪姩閫夋嫨淇濆瓨鐨勮繍琛屾祴閲忔暟鎹€?- sequence 瀹屾垚鏃朵笉鑳借嚜鍔ㄧ敓鎴?`keithley_run_data_*.csv`銆?
