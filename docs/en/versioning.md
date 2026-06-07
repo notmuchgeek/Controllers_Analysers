@@ -1,6 +1,6 @@
-# Versioning
+﻿# Versioning
 
-Version: `v16.11.260607.0040`
+Version: `v16.17.260608.0011`
 
 The v16 series uses a four-part version string:
 
@@ -11,17 +11,17 @@ v<major>.<minor>.<YYMMDD>.<HHMM>
 For Python package metadata, omit the leading `v`:
 
 ```text
-16.11.260607.0040
+16.17.260608.0011
 ```
 
 ## Meaning
 
-For `v16.11.260607.0040`:
+For `v16.17.260608.0011`:
 
 - `v16`: larger version series.
-- `11`: smaller version within v16.
-- `260607`: edit date, `YYMMDD`.
-- `0040`: exact edit time, 24-hour `HHMM`, when the coding agent changed the project.
+- `17`: smaller version within v16.
+- `260608`: edit date, `YYMMDD`.
+- `0011`: exact edit time, 24-hour `HHMM`, when the coding agent changed the project.
 
 ## Update Rule
 
@@ -30,19 +30,19 @@ Whenever Codex implements changes from a plan, increment the smaller version wit
 Example from one v16 implementation to the next:
 
 ```text
-v16.<old-minor>.<old-date>.<old-time> -> v16.11.260607.0040
+v16.<old-minor>.<old-date>.<old-time> -> v16.17.260608.0011
 ```
 
 If a later planned implementation occurs on the same day at 00:45:
 
 ```text
-v16.11.260607.0040 -> v16.12.260607.0045
+v16.17.260608.0011 -> v16.18.260608.0045
 ```
 
 If the next planned implementation occurs on a later day:
 
 ```text
-v16.11.260607.0040 -> v16.12.<new date>.<new time>
+v16.17.260608.0011 -> v16.18.<new date>.<new time>
 ```
 
 ## Required Locations
@@ -61,4 +61,7 @@ Update all of these together:
 ## Folder Name
 
 The active software version is the version recorded inside the application and documentation. Do not create a new folder for every small doc or code edit unless the user explicitly asks for a copied folder.
+
+
+
 

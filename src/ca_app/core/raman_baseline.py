@@ -88,6 +88,18 @@ class RamanSpectrum:
 
 
 @dataclass
+class RamanBaselineInput:
+    source_path: Path
+    input_format: str
+    spectra: tuple[RamanSpectrum, ...]
+    labels: tuple[float, ...] = ()
+
+    @property
+    def n_spectra(self) -> int:
+        return len(self.spectra)
+
+
+@dataclass
 class RamanBaselineSettings:
     method: str = METHOD_ASPLS
     auto: bool = True
@@ -111,6 +123,18 @@ class RamanBaselineResult:
     corrected: np.ndarray
     selected_parameters: dict[str, object]
     search_records: list[dict[str, object]] = field(default_factory=list)
+
+
+@dataclass
+class RamanBaselineBatchResult:
+    source: RamanBaselineInput
+    results: tuple[RamanBaselineResult, ...]
+
+    @property
+    def first_result(self) -> RamanBaselineResult:
+        if not self.results:
+            raise RamanBaselineError("No baseline results are available.")
+        return self.results[0]
 
 
 def read_raman_txt(path: str | Path) -> RamanSpectrum:
@@ -143,6 +167,103 @@ def read_raman_txt(path: str | Path) -> RamanSpectrum:
     if len(data) == 0:
         raise RamanBaselineError(f"No finite Raman data found in {path}")
     return RamanSpectrum(data[:, 0], data[:, 1], name=path.name)
+
+
+def read_raman_baseline_input(path: str | Path) -> RamanBaselineInput:
+    path = Path(path)
+    if not path.exists():
+        raise FileNotFoundError(f"Could not find Raman file: {path}")
+    suffix = path.suffix.lower()
+    if suffix == ".wdf":
+        from ca_app.core.raman_mapping import load_raman_data
+
+        return baseline_input_from_mapping_dataset(load_raman_data(path, input_mode="wdf"))
+    if suffix == ".txt":
+        try:
+            return read_origin_wide_baseline_txt(path)
+        except RamanBaselineError:
+            pass
+        try:
+            from ca_app.core.raman_mapping import load_raman_data
+
+            dataset = load_raman_data(path, input_mode="txt")
+            return baseline_input_from_mapping_dataset(dataset)
+        except Exception:
+            spectrum = read_raman_txt(path)
+            return RamanBaselineInput(path, "single", (spectrum,))
+    spectrum = read_raman_txt(path)
+    return RamanBaselineInput(path, "single", (spectrum,))
+
+
+def baseline_input_from_mapping_dataset(dataset) -> RamanBaselineInput:
+    spectra = tuple(
+        RamanSpectrum(
+            np.asarray(dataset.wavenumber, dtype=float),
+            np.asarray(dataset.intensity_matrix[:, index], dtype=float),
+            name=f"{dataset.source_path.name}:{index + 1}",
+        )
+        for index in range(dataset.n_spectra)
+    )
+    if dataset.n_spectra <= 1:
+        return RamanBaselineInput(dataset.source_path, "single", spectra)
+    if "Time" in dataset.metadata:
+        labels = tuple(float(value) for value in np.asarray(dataset.metadata["Time"], dtype=float).ravel())
+        return RamanBaselineInput(dataset.source_path, "time", spectra, labels)
+    sequence = np.asarray(dataset.metadata.get("Sequence", np.arange(1, dataset.n_spectra + 1)), dtype=float).ravel()
+    labels = tuple(float(value) for value in sequence)
+    if dataset.n_spectra <= 1 and dataset.source_type == "txt_sequence":
+        return RamanBaselineInput(dataset.source_path, "single", spectra)
+    return RamanBaselineInput(dataset.source_path, "sequence", spectra, labels)
+
+
+def read_origin_wide_baseline_txt(path: str | Path) -> RamanBaselineInput:
+    path = Path(path)
+    lines = path.read_text(encoding="utf-8", errors="ignore").splitlines()
+    if len(lines) < 4:
+        raise RamanBaselineError("Not enough rows for Origin-style Raman TXT.")
+    first_tokens = lines[0].replace(",", " ").split()
+    if not first_tokens or first_tokens[0].strip().lower().lstrip("#") not in {"wavenumber", "wave"}:
+        raise RamanBaselineError("Not an Origin-style Raman TXT file.")
+    numeric_rows = []
+    for line in lines[1:]:
+        parts = line.strip().replace(",", " ").split()
+        if not parts:
+            continue
+        try:
+            numeric_rows.append([float(item) for item in parts])
+        except ValueError:
+            continue
+    if not numeric_rows:
+        raise RamanBaselineError("No numeric Origin-style Raman rows found.")
+    width = len(numeric_rows[0])
+    if width < 2 or any(len(row) != width for row in numeric_rows):
+        raise RamanBaselineError("Origin-style Raman rows must have a consistent width.")
+    data = np.asarray(numeric_rows, dtype=float)
+    finite = np.isfinite(data).all(axis=1)
+    data = data[finite]
+    if len(data) == 0:
+        raise RamanBaselineError("No finite Origin-style Raman rows found.")
+
+    labels = []
+    if len(lines) >= 3:
+        for token in lines[2].replace(",", " ").split()[1:width]:
+            try:
+                labels.append(float(token))
+            except ValueError:
+                digits = "".join(ch for ch in token if ch.isdigit() or ch in ".-")
+                if digits:
+                    try:
+                        labels.append(float(digits))
+                    except ValueError:
+                        pass
+    if len(labels) != width - 1:
+        labels = [float(index) for index in range(1, width)]
+    spectra = tuple(
+        RamanSpectrum(data[:, 0], data[:, index], name=f"{path.name}:{index}")
+        for index in range(1, width)
+    )
+    input_format = "single" if len(spectra) == 1 else "wide"
+    return RamanBaselineInput(path, input_format, spectra, tuple(labels))
 
 
 def default_output_name(path: str | Path) -> str:
@@ -308,6 +429,15 @@ def fit_raman_baseline(spectrum: RamanSpectrum, settings: RamanBaselineSettings)
         corrected=corrected,
         selected_parameters=best_record,
         search_records=records,
+    )
+
+
+def fit_raman_baseline_input(source: RamanBaselineInput, settings: RamanBaselineSettings) -> RamanBaselineBatchResult:
+    if source.n_spectra == 0:
+        raise RamanBaselineError("No Raman spectra are available for baseline fitting.")
+    return RamanBaselineBatchResult(
+        source=source,
+        results=tuple(fit_raman_baseline(spectrum, settings) for spectrum in source.spectra),
     )
 
 
@@ -852,3 +982,46 @@ def save_corrected_txt(result: RamanBaselineResult, path: str | Path) -> Path:
         for x_value, y_value in zip(result.spectrum.raman_shift, result.corrected):
             handle.write(f"{x_value:.6f}\t{y_value:.6f}\n")
     return path
+
+
+def save_corrected_baseline_input(batch: RamanBaselineBatchResult, path: str | Path) -> Path:
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if batch.source.input_format == "single":
+        return save_corrected_txt(batch.first_result, path)
+
+    with path.open("w", encoding="utf-8", newline="") as handle:
+        if batch.source.input_format == "time":
+            handle.write("#Time\t\t#Wave\t\t#Intensity\n")
+            labels = batch.source.labels or tuple(float(index) for index in range(1, len(batch.results) + 1))
+            for label, result in zip(labels, batch.results):
+                for x_value, y_value in zip(result.spectrum.raman_shift, result.corrected):
+                    handle.write(f"{float(label):.6f}\t{float(x_value):.6f}\t{float(y_value):.6f}\n")
+            return path
+
+        if batch.source.input_format == "wide":
+            labels = batch.source.labels or tuple(float(index) for index in range(1, len(batch.results) + 1))
+            handle.write("\t".join(["Wavenumber"] + ["Intensity"] * len(batch.results)) + "\n")
+            handle.write("\t".join(["cm\\+(-1)"] + ["a.u."] * len(batch.results)) + "\n")
+            handle.write("\t".join([""] + [f"Sequence {format_sequence_label(label)}" for label in labels]) + "\n")
+            x_values = batch.first_result.spectrum.raman_shift
+            for row_index, x_value in enumerate(x_values):
+                values = [f"{float(x_value):.6f}"]
+                values.extend(f"{float(result.corrected[row_index]):.6f}" for result in batch.results)
+                handle.write("\t".join(values) + "\n")
+            return path
+
+        handle.write("#Sequence\t\t#Wave\t\t#Intensity\n")
+        labels = batch.source.labels or tuple(float(index) for index in range(1, len(batch.results) + 1))
+        for label, result in zip(labels, batch.results):
+            label_text = format_sequence_label(label)
+            for x_value, y_value in zip(result.spectrum.raman_shift, result.corrected):
+                handle.write(f"{label_text}\t{float(x_value):.6f}\t{float(y_value):.6f}\n")
+    return path
+
+
+def format_sequence_label(value: float) -> str:
+    value = float(value)
+    if np.isclose(value, round(value)):
+        return str(int(round(value)))
+    return f"{value:.6f}"

@@ -353,10 +353,10 @@ def save_peak_summary_csv(result: InsituAnalysisResult, path: str | Path) -> Pat
     return path
 
 
-def save_ratio_csv(result: InsituAnalysisResult, path: str | Path) -> Path:
+def save_ratio_csv(result: InsituAnalysisResult, path: str | Path, inverse: bool = False) -> Path:
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    rows = ratio_rows(result)
+    rows = ratio_rows(result, inverse=inverse)
     with path.open("w", newline="", encoding="utf-8-sig") as handle:
         writer = csv.DictWriter(handle, fieldnames=list(rows[0].keys()))
         writer.writeheader()
@@ -383,7 +383,7 @@ def peak_summary_rows(result: InsituAnalysisResult) -> list[dict[str, float]]:
     return rows
 
 
-def ratio_rows(result: InsituAnalysisResult) -> list[dict[str, float]]:
+def ratio_rows(result: InsituAnalysisResult, inverse: bool = False) -> list[dict[str, float]]:
     if not result.ratios:
         raise RamanInsituError("No ratio data to save.")
     base = result.ratios[0]
@@ -396,7 +396,13 @@ def ratio_rows(result: InsituAnalysisResult) -> list[dict[str, float]]:
         for ratio in result.ratios:
             label = format_peak_label(ratio.center_cm1)
             norm_label = format_peak_label(ratio.normalized_center_cm1)
-            row[f"ratio_{label}_to_{norm_label}"] = float(ratio.ratio[index])
+            if inverse and not np.isclose(ratio.center_cm1, ratio.normalized_center_cm1):
+                key = f"ratio_{norm_label}_to_{label}"
+                value = 1.0 / ratio.ratio[index] if not np.isclose(ratio.ratio[index], 0.0) else np.nan
+            else:
+                key = f"ratio_{label}_to_{norm_label}"
+                value = ratio.ratio[index]
+            row[key] = float(value)
         rows.append(row)
     return rows
 

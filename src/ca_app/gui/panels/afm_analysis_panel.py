@@ -602,20 +602,20 @@ class AfmAnalysisPanel(wx.Panel):
 
         im = image_ax.imshow(values, cmap=cmap, origin="upper", aspect="equal", vmin=vmin, vmax=vmax)
         image_ax.set_box_aspect(1)
-        image_ax.set_title("Loaded image")
+        image_ax.set_title("Loaded Image")
         image_ax.set_xlabel("Column")
         self.apply_processed_y_axis(image_ax, values.shape[0])
         self.figure_image.colorbar(im, cax=image_cax)
 
         counts, edges = histogram(values)
         hist_ax.bar(edges[:-1], counts, width=np.diff(edges), color="0.55", alpha=0.7)
-        hist_ax.set_title("Full image histogram")
+        hist_ax.set_title("Full Image Histogram")
         hist_ax.set_xlabel(self.value_axis_label())
         hist_ax.set_ylabel("Pixel count")
 
         region_im = region_ax.imshow(values, cmap=cmap, origin="upper", aspect="equal", vmin=vmin, vmax=vmax)
         region_ax.set_box_aspect(1)
-        region_ax.set_title("Dark and illuminated regions")
+        region_ax.set_title("Dark and Illuminated Regions")
         region_ax.set_xlabel("Column")
         self.apply_processed_y_axis(region_ax, values.shape[0])
         self.figure_image.colorbar(region_im, cax=region_cax)
@@ -650,7 +650,7 @@ class AfmAnalysisPanel(wx.Panel):
                 counts, edges = histogram(selected)
                 region_hist_ax.step(edges[:-1], counts, where="post", label=label, color=color)
                 plotted = True
-        region_hist_ax.set_title("Dark vs illuminated histogram")
+        region_hist_ax.set_title("Dark vs Illuminated Histogram")
         region_hist_ax.set_xlabel(self.value_axis_label())
         region_hist_ax.set_ylabel("Pixel count")
         if plotted:
@@ -674,7 +674,7 @@ class AfmAnalysisPanel(wx.Panel):
                 if np.any(valid):
                     mask_counts, mask_edges = histogram(values[valid], value_range=(float(edges[0]), float(edges[-1])))
                     hist_ax.step(mask_edges[:-1], mask_counts, where="post", color=color, linewidth=1.4, label=label)
-        hist_ax.set_title("Voltage distribution")
+        hist_ax.set_title("Voltage Distribution")
         hist_ax.set_xlabel(self.value_axis_label())
         hist_ax.set_ylabel("Pixel count")
         if mask_set is not None:
@@ -703,7 +703,7 @@ class AfmAnalysisPanel(wx.Panel):
             else:
                 span_start, span_end = x_values[start - 1], x_values[end - 1]
             profile_ax.axvspan(span_start, span_end, color="yellow", alpha=0.25)
-        profile_ax.set_title(f"{self.value_name()} over {self.current_x_mode()}")
+        profile_ax.set_title(f"{self.value_name()} over {self.current_x_mode().title()}")
         profile_ax.set_xlabel("Row number" if self.current_x_mode() == "row" else "Time / s")
         profile_ax.set_ylabel(self.value_axis_label())
         profile_ax.grid(True)

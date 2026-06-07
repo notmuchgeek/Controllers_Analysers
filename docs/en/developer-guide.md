@@ -1,6 +1,6 @@
-# Developer Guide
+﻿# Developer Guide
 
-Version: `v16.11.260607.0040`
+Version: `v16.17.260608.0011`
 
 This guide is for coding agents and human maintainers.
 
@@ -83,7 +83,7 @@ It follows the Mapping/Insitu layout and has:
 - Shared raw preview seconds textbox and slider.
 - Preview controls for V_Gate and V_Drain first-second windows.
 - Raw data preview with four plots.
-- V_Gate/V_Drain dual-axis preview.
+- V_Gate/V_Drain dual-axis preview and V_Gate/I_Drain drain-current preview with gate-pulse spans.
 - Pulse-summary table.
 - Bottom log.
 
@@ -98,4 +98,7 @@ Before finalizing changes:
 - Search for stale workspace text that describes Electrical as blank or not implemented.
 - Confirm English and Chinese docs stay in matching structure.
 - Keep accidental generated caches out of the folder if possible.
+
+
+
 

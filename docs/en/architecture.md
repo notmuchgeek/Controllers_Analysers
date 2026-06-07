@@ -1,4 +1,4 @@
-# Architecture
+﻿# Architecture
 
 The application is layered around a wxPython GUI shell and independent workspace panels. The active source package is under `src/ca_app/`.
 
@@ -52,8 +52,11 @@ Nested notebooks are restored by page names, not recursive order alone.
 
 ## Usage Logging
 
-`src/ca_app/runtime/usage_logger.py` writes best-effort local JSONL logs under the same per-user application-data root as `app_state.json`, in `usage_logs/usage_YYYYMMDD.jsonl`.
+`src/ca_app/runtime/usage_logger.py` writes best-effort local JSONL logs under the software root, in `usage_logs/usage_YYYYMMDD.jsonl` next to `run_ca_app.py`.
 
 The logger is for later workflow and performance analysis. It records sanitized events such as app open/close, workspace and tab changes, file load/save actions, fitting start/finish/failure, and operation durations. It records file basenames/extensions and coarse counts only. It must not record full paths, raw scientific data, hardware measurement traces, measured voltages/currents, calibration table rows, user comments, or exported result contents.
 
 Logging failures are swallowed so logging never slows or blocks the GUI, hardware control, fitting, loading, or saving.
+
+
+

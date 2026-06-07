@@ -1642,15 +1642,15 @@ class AfmControllerPanel(wx.Panel):
 
     def quick_test_plot_arrays(self, value, source_mode):
         ylabel = "Source current / mA" if source_mode == SOURCE_CURRENT else "Target intensity / mW"
-        title = "Quick Test constant source until OFF"
+        title = "Quick Test Constant Source until OFF"
         return [0.0, QUICK_TEST_PREVIEW_TIME_S], [value, value], ylabel, title
 
     def quick_test_dual_plot_arrays(self, value, source_mode, current_ma):
         t = [0.0, QUICK_TEST_PREVIEW_TIME_S]
         if source_mode == SOURCE_INTENSITY:
-            return t, [current_ma, current_ma], [value, value], "Quick Test constant source until OFF"
+            return t, [current_ma, current_ma], [value, value], "Quick Test Constant Source until OFF"
         intensity = self.calibration_model.predict_intensity([current_ma, current_ma])
-        return t, [current_ma, current_ma], intensity.tolist(), "Quick Test constant source until OFF"
+        return t, [current_ma, current_ma], intensity.tolist(), "Quick Test Constant Source until OFF"
 
     def sequence_to_plot_arrays(self, sequence, source_mode):
         t = [0.0]
@@ -1684,7 +1684,7 @@ class AfmControllerPanel(wx.Panel):
             t.append(current_time)
             y.append(val)
         ylabel = "Source current / mA" if source_mode == SOURCE_CURRENT else "Target intensity / mW"
-        title = "Function-replaced source profile" if has_function else "Planned source profile"
+        title = "Function-Replaced Source Profile" if has_function else "Planned Source Profile"
         return t, y, ylabel, title
 
     def sequence_to_dual_plot_arrays(self, sequence):
@@ -1731,7 +1731,7 @@ class AfmControllerPanel(wx.Panel):
             t.append(current_time)
             current_y.append(current_val)
             intensity_y.append(intensity_val)
-        title = "Function-replaced source profile" if has_function else "Planned source profile"
+        title = "Function-Replaced Source Profile" if has_function else "Planned Source Profile"
         return t, current_y, intensity_y, title
 
     def update_calibration_plot(self):
@@ -1802,7 +1802,7 @@ class AfmControllerPanel(wx.Panel):
             self.ax_function.plot([bounds["x_min"], bounds["x_max"]], [bounds["y_min"], bounds["y_max"]], "o")
             self.ax_function.set_xlabel("x")
             self.ax_function.set_ylabel("Source current / mA" if source_mode == SOURCE_CURRENT else "Target intensity / mW")
-            self.ax_function.set_title("Function profile")
+            self.ax_function.set_title("Function Profile")
             self.ax_function.grid(True)
             if len(x) > 0:
                 self.ax_function.set_xlim(float(np.nanmin(x)), float(np.nanmax(x)))

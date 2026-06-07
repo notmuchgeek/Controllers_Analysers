@@ -69,11 +69,24 @@ class RamanMappingCoreTests(unittest.TestCase):
             origin_text = origin_path.read_text(encoding="utf-8")
             selected_text = selected_path.read_text(encoding="utf-8")
 
-        self.assertIn("Wavenumber\tIntensity 1\tIntensity 2\tAveraged Intensity\tNormalised Intensity", origin_text)
-        self.assertIn("cm^(-1)\ta.u.\ta.u.\ta.u.\ta.u.", origin_text)
+        self.assertIn("Wavenumber\tIntensity\tIntensity\tAveraged Intensity\tNormalised Intensity", origin_text)
+        self.assertIn("cm\\+(-1)\ta.u.\ta.u.\ta.u.\ta.u.", origin_text)
+        self.assertIn("\tSequence 1\tSequence 2\tAveraged\tNormalised", origin_text)
         self.assertTrue(selected_text.startswith("#Sequence\t\t#Wave\t\t#Intensity\n"))
         self.assertIn("1.000000\t100.000000\t10.000000", selected_text)
         self.assertIn("2.000000\t100.000000\t30.000000", selected_text)
+
+    def test_origin_export_can_skip_average_and_normalised_columns(self):
+        data = read_wire_txt(self.make_small_map_file())
+        with tempfile.TemporaryDirectory() as tmp:
+            origin_path = export_origin_txt(data, Path(tmp) / "origin.txt", include_averaged=False, include_normalised=False)
+
+            lines = origin_path.read_text(encoding="utf-8").splitlines()
+
+        self.assertEqual(lines[0], "Wavenumber\tIntensity\tIntensity")
+        self.assertEqual(lines[1], "cm\\+(-1)\ta.u.\ta.u.")
+        self.assertEqual(lines[2], "\tSequence 1\tSequence 2")
+        self.assertEqual(len(lines[3].split("\t")), 3)
 
     def test_parse_selected_spectra_rejects_out_of_range(self):
         self.assertEqual(parse_selected_spectra("1,3", 3), [0, 2])

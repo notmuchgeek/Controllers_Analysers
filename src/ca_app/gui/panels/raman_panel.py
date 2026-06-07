@@ -73,12 +73,16 @@ from ca_app.core.raman_baseline import (
     METHOD_BACKCOR,
     METHOD_DRPLS,
     RamanBaselineError,
+    RamanBaselineInput,
     RamanBaselineSettings,
     default_output_name,
     fit_raman_baseline,
+    fit_raman_baseline_input,
     interpolate_to_reference_x,
     parse_numeric_list,
+    read_raman_baseline_input,
     read_raman_txt,
+    save_corrected_baseline_input,
     save_corrected_txt,
 )
 from ca_app.runtime.usage_logger import file_metadata, log_usage_event
@@ -89,6 +93,20 @@ def preview_percent_from_slider(value: int) -> float:
     if clamped <= 70:
         return 1.0 + (29.0 * clamped / 70.0)
     return 30.0 + (70.0 * (clamped - 70) / 30.0)
+
+
+def set_raman_xaxis_ascending(ax, x):
+    values = np.asarray(x, dtype=float)
+    finite = values[np.isfinite(values)]
+    if finite.size:
+        x_min = float(np.nanmin(finite))
+        x_max = float(np.nanmax(finite))
+        if x_max > x_min:
+            ax.set_xlim(x_min, x_max)
+
+
+def peak_legend_label(value: float) -> str:
+    return f"{format_peak_label(value)} cm$^{{-1}}$"
 
 
 class RamanAnalysisPanel(wx.Panel):
@@ -231,7 +249,15 @@ class RamanMappingPanel(wx.Panel):
         load_box.Add(preview_row, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 5)
         sizer.Add(load_box, 0, wx.EXPAND | wx.ALL, 5)
 
-        averaging_box = wx.StaticBoxSizer(wx.VERTICAL, scrolled, "Averaging")
+        averaging_box = wx.StaticBoxSizer(wx.VERTICAL, scrolled, "Save file")
+        save_choice_row = wx.BoxSizer(wx.HORIZONTAL)
+        self.cb_save_averaged = wx.CheckBox(scrolled, label="Averaged")
+        self.cb_save_normalised = wx.CheckBox(scrolled, label="Normalised")
+        self.cb_save_averaged.SetValue(True)
+        self.cb_save_normalised.SetValue(True)
+        save_choice_row.Add(self.cb_save_averaged, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 16)
+        save_choice_row.Add(self.cb_save_normalised, 0, wx.ALIGN_CENTER_VERTICAL)
+        averaging_box.Add(save_choice_row, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 5)
         self.btn_save_origin = wx.Button(scrolled, label="Save")
         self.btn_save_origin.Disable()
         self.btn_save_origin.Bind(wx.EVT_BUTTON, self.on_save_origin)
@@ -328,6 +354,8 @@ class RamanMappingPanel(wx.Panel):
             "selected_columns": self.tc_selected.GetValue(),
             "preview_every_n": self.tc_preview_every_n.GetValue(),
             "raw_legend": self.cb_raw_legend.GetValue(),
+            "save_averaged": self.cb_save_averaged.GetValue(),
+            "save_normalised": self.cb_save_normalised.GetValue(),
         }
 
     def apply_parameters(self, params):
@@ -338,6 +366,8 @@ class RamanMappingPanel(wx.Panel):
         self.tc_selected.SetValue(str(params.get("selected_columns", self.tc_selected.GetValue())))
         self.tc_preview_every_n.SetValue(str(params.get("preview_every_n", self.tc_preview_every_n.GetValue())))
         self.cb_raw_legend.SetValue(bool(params.get("raw_legend", self.cb_raw_legend.GetValue())))
+        self.cb_save_averaged.SetValue(bool(params.get("save_averaged", self.cb_save_averaged.GetValue())))
+        self.cb_save_normalised.SetValue(bool(params.get("save_normalised", self.cb_save_normalised.GetValue())))
         self.update_legend_control()
         if self.dataset is not None:
             self.update_previews()
@@ -466,10 +496,7 @@ class RamanMappingPanel(wx.Panel):
         self.update_legend_control()
 
     def update_legend_control(self):
-        allow_legend = self.preview_every_n(default=1) > 1
-        self.cb_raw_legend.Enable(allow_legend)
-        if not allow_legend:
-            self.cb_raw_legend.SetValue(False)
+        self.cb_raw_legend.Enable(self.dataset is not None)
 
     def preview_every_n(self, default=1):
         text = self.tc_preview_every_n.GetValue().strip()
@@ -540,18 +567,17 @@ class RamanMappingPanel(wx.Panel):
         x, y_matrix = self.filtered_arrays()
         every_n = self.preview_every_n(default=1)
         indexes = list(range(0, y_matrix.shape[1], every_n))
-        show_legend = every_n > 1 and self.cb_raw_legend.GetValue()
+        show_legend = self.cb_raw_legend.GetValue()
         for index in indexes:
             kwargs = {"linewidth": 0.8}
             if show_legend:
                 kwargs["label"] = str(index + 1)
             ax.plot(x, y_matrix[:, index], **kwargs)
-        ax.set_title("All mapping spectra" if every_n <= 1 else f"Every {every_n}-th mapping spectrum")
+        ax.set_title("All Mapping Spectra" if every_n <= 1 else f"Every {every_n}-th Mapping Spectrum")
         ax.set_xlabel("Raman shift (cm$^{-1}$)")
         ax.set_ylabel("Intensity")
         ax.grid(True, alpha=0.3)
-        if len(x) > 1 and x[0] > x[-1]:
-            ax.invert_xaxis()
+        set_raman_xaxis_ascending(ax, x)
         if show_legend:
             ax.legend(title="Spectrum", fontsize=7, ncol=2)
         self.figure_raw.tight_layout(pad=1.2)
@@ -572,13 +598,12 @@ class RamanMappingPanel(wx.Panel):
         for index in selected:
             label = self.spectrum_label(index)
             selected_ax.plot(x, y_matrix[:, index], linewidth=1.1, label=label)
-        selected_ax.set_title("Selected spectra")
+        selected_ax.set_title("Selected Spectra")
         selected_ax.legend(fontsize=7)
         selected_ax.set_xlabel("Raman shift (cm$^{-1}$)")
         selected_ax.set_ylabel("Intensity")
         selected_ax.grid(True, alpha=0.3)
-        if len(x) > 1 and x[0] > x[-1]:
-            selected_ax.invert_xaxis()
+        set_raman_xaxis_ascending(selected_ax, x)
         self.figure_selected.tight_layout(pad=1.2)
         self.canvas_selected.draw()
 
@@ -606,7 +631,7 @@ class RamanMappingPanel(wx.Panel):
             for xi, yi, label in zip(x, y, seq):
                 ax.text(xi, yi, str(int(label)), fontsize=12, ha="left", va="bottom")
             ax.set_aspect("equal", adjustable="box")
-            ax.set_title("Mapping locations")
+            ax.set_title("Mapping Locations")
             ax.set_xlabel("X / um")
             ax.set_ylabel("Y / um")
         elif dataset.image_bytes is None:
@@ -650,7 +675,12 @@ class RamanMappingPanel(wx.Panel):
                 return
             path = dialog.GetPath()
         try:
-            saved = export_origin_txt(self.dataset, path)
+            saved = export_origin_txt(
+                self.dataset,
+                path,
+                include_averaged=self.cb_save_averaged.GetValue(),
+                include_normalised=self.cb_save_normalised.GetValue(),
+            )
         except Exception as exc:
             self.show_warning(str(exc))
             return
@@ -802,6 +832,7 @@ class RamanElectricalPanel(wx.Panel):
         self.electrical_notebook = wx.Notebook(panel)
         self.figure_electrical_raw, self.canvas_electrical_raw = self.add_figure_page("Raw data")
         self.figure_vgvd, self.canvas_vgvd, self.grid_summary = self.add_vgvd_page("V_Gate/V_Drain")
+        self.figure_vgid, self.canvas_vgid = self.add_figure_page("V_Gate/I_Drain")
         sizer.Add(self.electrical_notebook, 1, wx.EXPAND)
 
         log_box = wx.StaticBoxSizer(wx.VERTICAL, panel, "Electrical log")
@@ -1023,6 +1054,7 @@ class RamanElectricalPanel(wx.Panel):
             self.update_preview_labels()
             self.draw_raw_preview()
             self.draw_vgvd_preview()
+            self.draw_vgid_preview()
             self.draw_summary_table()
         except Exception as exc:
             self.log(f"Preview update warning: {exc}")
@@ -1036,15 +1068,15 @@ class RamanElectricalPanel(wx.Panel):
             self.figure_electrical_raw.add_subplot(224),
         ]
         plots = [
-            (GATE_TIME_COL, GATE_VOLTAGE_COL, "Gate V", r"$V_{Gate}$ / V", "green"),
-            (DRAIN_TIME_COL, DRAIN_VOLTAGE_COL, "Drain V", r"$V_{Drain}$ / V", "red"),
-            (GATE_TIME_COL, GATE_CURRENT_COL, "Gate I", r"$I_{Gate}$ / A", "orange"),
-            (DRAIN_TIME_COL, DRAIN_CURRENT_COL, "Drain I", r"$I_{Drain}$ / A", "blue"),
+            (GATE_TIME_COL, GATE_VOLTAGE_COL, "Gate V", r"$V_{Gate}$ / V", "green", 1.0),
+            (DRAIN_TIME_COL, DRAIN_VOLTAGE_COL, "Drain V", r"$V_{Drain}$ / V", "red", 1.0),
+            (GATE_TIME_COL, GATE_CURRENT_COL, "Gate I", r"$I_{Gate}$ / A", "orange", 1.0),
+            (DRAIN_TIME_COL, DRAIN_CURRENT_COL, "Drain I", r"$I_{Drain}$ / mA", "blue", 1000.0),
         ]
         raw_preview_s = self.preview_seconds("raw")
         raw_linewidth = self.raw_trace_linewidth(raw_preview_s)
-        for ax, (time_col, signal_col, title, ylabel, color) in zip(axes, plots):
-            self.plot_signal(ax, time_col, signal_col, title, ylabel, color, raw_preview_s, raw_linewidth)
+        for ax, (time_col, signal_col, title, ylabel, color, scale) in zip(axes, plots):
+            self.plot_signal(ax, time_col, signal_col, title, ylabel, color, raw_preview_s, raw_linewidth, y_scale=scale)
         self.figure_electrical_raw.tight_layout(pad=1.2)
         self.canvas_electrical_raw.draw()
 
@@ -1059,7 +1091,7 @@ class RamanElectricalPanel(wx.Panel):
         linewidth = cls.RAW_TRACE_LINEWIDTH_MAX / np.sqrt(max(seconds, 0.1))
         return float(min(cls.RAW_TRACE_LINEWIDTH_MAX, max(cls.RAW_TRACE_LINEWIDTH_MIN, linewidth)))
 
-    def plot_signal(self, ax, time_col, signal_col, title, ylabel, color, preview_s, linewidth):
+    def plot_signal(self, ax, time_col, signal_col, title, ylabel, color, preview_s, linewidth, y_scale=1.0):
         time_values = self.data.column(time_col) if self.data is not None else None
         signal_values = self.data.column(signal_col) if self.data is not None else None
         if time_values is None or signal_values is None:
@@ -1069,7 +1101,7 @@ class RamanElectricalPanel(wx.Panel):
             if np.any(valid):
                 start = float(np.min(time_values[valid]))
                 valid = valid & (time_values <= start + float(preview_s))
-            ax.plot(time_values[valid], signal_values[valid], color=color, linewidth=linewidth)
+            ax.plot(time_values[valid], signal_values[valid] * float(y_scale), color=color, linewidth=linewidth)
         ax.set_title(title)
         ax.set_xlabel("Time / s")
         ax.set_ylabel(ylabel)
@@ -1106,9 +1138,9 @@ class RamanElectricalPanel(wx.Panel):
         ax_right.set_ylabel(r"$V_{Drain}$ / V", color="red")
         ax_right.tick_params(axis="y", labelcolor="red")
         ax_left.set_title(
-            "V_Gate first "
+            "V_Gate First "
             f"{self.format_preview_seconds(self.preview_seconds('vg'))} s and "
-            "V_Drain first "
+            "V_Drain First "
             f"{self.format_preview_seconds(self.preview_seconds('vd'))} s"
         )
         lines_left, labels_left = ax_left.get_legend_handles_labels()
@@ -1133,11 +1165,75 @@ class RamanElectricalPanel(wx.Panel):
         ax.plot(t[mask], v[mask], color=color, linewidth=1.5, label=label)
         return True
 
+    def draw_vgid_preview(self):
+        self.figure_vgid.clear()
+        ax_left = self.figure_vgid.add_subplot(111)
+        preview_s = self.preview_seconds("raw")
+        linewidth = self.raw_trace_linewidth(preview_s)
+        self.draw_gate_pulse_spans(ax_left, preview_s)
+        has_id = self.plot_dual_axis_signal(
+            ax_left,
+            DRAIN_TIME_COL,
+            DRAIN_CURRENT_COL,
+            preview_s,
+            r"$I_{Drain}$",
+            "blue",
+            linewidth,
+            y_scale=1000.0,
+        )
+        if not has_id:
+            ax_left.text(0.5, 0.6, "Drain Current column missing", ha="center", va="center", transform=ax_left.transAxes)
+        ax_left.set_xlabel("Time / s")
+        ax_left.set_ylabel(r"$I_{Drain}$ / mA", color="blue")
+        ax_left.tick_params(axis="y", labelcolor="blue")
+        ax_left.grid(True, alpha=0.3)
+        ax_left.set_title(f"I_Drain with V_Gate Pulse Spans First {self.format_preview_seconds(preview_s)} s")
+        lines_left, labels_left = ax_left.get_legend_handles_labels()
+        if lines_left:
+            ax_left.legend(lines_left, labels_left, loc="best")
+        self.figure_vgid.tight_layout(pad=1.2)
+        self.canvas_vgid.draw()
+
+    def draw_gate_pulse_spans(self, ax, preview_s):
+        if self.summary is None:
+            return
+        spans = self.summary.vg.pulse_spans_s
+        if not spans:
+            return
+        starts = [start for start, _ in spans]
+        visible_start = min(starts) if starts else 0.0
+        gate_time = self.data.column(GATE_TIME_COL) if self.data is not None else None
+        if gate_time is not None:
+            finite = gate_time[np.isfinite(gate_time)]
+            if finite.size:
+                visible_start = float(np.min(finite))
+        visible_stop = visible_start + float(preview_s)
+        for start, stop in spans:
+            lower = max(float(start), visible_start)
+            upper = min(float(stop), visible_stop)
+            if upper > lower:
+                ax.axvspan(lower, upper, color="red", alpha=0.35, label="V_Gate pulse" if not ax.patches else None)
+
+    def plot_dual_axis_signal(self, ax, time_col, signal_col, preview_s, label, color, linewidth, y_scale=1.0):
+        time_values = self.data.column(time_col) if self.data is not None else None
+        signal_values = self.data.column(signal_col) if self.data is not None else None
+        if time_values is None or signal_values is None:
+            return False
+        valid = np.isfinite(time_values) & np.isfinite(signal_values)
+        if not np.any(valid):
+            return False
+        t = time_values[valid]
+        y = signal_values[valid]
+        start = float(np.min(t))
+        mask = t <= start + float(preview_s)
+        ax.plot(t[mask], y[mask] * float(y_scale), color=color, linewidth=linewidth, label=label)
+        return True
+
     def draw_summary_table(self):
         if self.summary is None:
             clear_grid(self.grid_summary, "Load an Electrical CSV file to preview V_Gate/V_Drain summary.")
             return
-        headers = ["Item", "const/pulse", "const value / V", "n_pulse", "t_initial / s", "t_duration / s"]
+        headers = ["Item", "const/pulse", "voltage value / V", "n_pulse", "t_initial / s", "t_duration / s"]
         rows = []
         for row in summary_table_rows(self.summary):
             if len(row) == 2:
@@ -1154,6 +1250,7 @@ class RamanElectricalPanel(wx.Panel):
                 "Load an Electrical CSV file to preview V_Gate, I_Gate, V_Drain, and I_Drain.",
             ),
             (self.figure_vgvd, self.canvas_vgvd, "Load an Electrical CSV file to preview V_Gate/V_Drain."),
+            (self.figure_vgid, self.canvas_vgid, "Load an Electrical CSV file to preview V_Gate/I_Drain."),
         ]:
             figure.clear()
             ax = figure.add_subplot(111)
@@ -1282,26 +1379,47 @@ class RamanInsituEchemPanel(wx.Panel):
         sizer.Add(window_box, 0, wx.EXPAND | wx.ALL, 5)
 
         norm_box = wx.StaticBoxSizer(wx.VERTICAL, scrolled, "Normalised peak")
+        norm_row = wx.BoxSizer(wx.HORIZONTAL)
         self.choice_normalized_peak = wx.Choice(scrolled)
         self.choice_normalized_peak.Bind(wx.EVT_CHOICE, self.on_parameter_changed)
-        norm_box.Add(self.choice_normalized_peak, 0, wx.EXPAND | wx.ALL, 5)
+        self.cb_inverse_ratio = wx.CheckBox(scrolled, label="inverse")
+        self.cb_inverse_ratio.Bind(wx.EVT_CHECKBOX, self.on_parameter_changed)
+        norm_row.Add(self.choice_normalized_peak, 1, wx.EXPAND | wx.RIGHT, 8)
+        norm_row.Add(self.cb_inverse_ratio, 0, wx.ALIGN_CENTER_VERTICAL)
+        norm_box.Add(norm_row, 0, wx.EXPAND | wx.ALL, 5)
         sizer.Add(norm_box, 0, wx.EXPAND | wx.ALL, 5)
 
-        update_row = wx.BoxSizer(wx.HORIZONTAL)
-        self.cb_analysis_legend = wx.CheckBox(scrolled, label="Legend")
-        self.cb_analysis_legend.SetValue(True)
-        self.cb_analysis_legend.Bind(wx.EVT_CHECKBOX, self.on_parameter_changed)
-        self.btn_update_preview = wx.Button(scrolled, label="Update")
-        self.btn_update_preview.Bind(wx.EVT_BUTTON, self.on_update_preview)
-        update_row.Add(self.cb_analysis_legend, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 8)
-        update_row.Add(self.btn_update_preview, 1, wx.EXPAND)
-        sizer.Add(update_row, 0, wx.EXPAND | wx.ALL, 5)
+        figure_box = wx.StaticBoxSizer(wx.VERTICAL, scrolled, "Figure")
+        legend_row = wx.BoxSizer(wx.HORIZONTAL)
+        legend_row.Add(wx.StaticText(scrolled, label="Legend:"), 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 8)
+        self.cb_spectrum_legend = wx.CheckBox(scrolled, label="Spectrum")
+        self.cb_peak_position_legend = wx.CheckBox(scrolled, label="Peak Position")
+        self.cb_peak_intensity_legend = wx.CheckBox(scrolled, label="Peak Intensity")
+        self.cb_peak_ratio_legend = wx.CheckBox(scrolled, label="Peak Ratio")
+        self.cb_analysis_legend = self.cb_spectrum_legend
+        for checkbox in [
+            self.cb_spectrum_legend,
+            self.cb_peak_position_legend,
+            self.cb_peak_intensity_legend,
+            self.cb_peak_ratio_legend,
+        ]:
+            checkbox.SetValue(True)
+            checkbox.Bind(wx.EVT_CHECKBOX, self.on_parameter_changed)
+            legend_row.Add(checkbox, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 8)
+        figure_box.Add(legend_row, 0, wx.EXPAND | wx.ALL, 5)
 
-        save_box = wx.StaticBoxSizer(wx.VERTICAL, scrolled, "Save")
-        self.btn_save_spectra = wx.Button(scrolled, label="Save spectra plot/data")
-        self.btn_save_positions = wx.Button(scrolled, label="Save peak positions plot/data")
-        self.btn_save_intensities = wx.Button(scrolled, label="Save peak intensities plot/data")
-        self.btn_save_ratios = wx.Button(scrolled, label="Save ratios plot/data")
+        self.btn_update_preview = wx.Button(scrolled, label="Update Figure")
+        self.btn_update_preview.Bind(wx.EVT_BUTTON, self.on_update_preview)
+        figure_box.Add(self.btn_update_preview, 0, wx.EXPAND | wx.ALL, 5)
+        sizer.Add(figure_box, 0, wx.EXPAND | wx.ALL, 5)
+
+        save_box = wx.StaticBoxSizer(wx.VERTICAL, scrolled, "Save Plot/Data")
+        save_row_1 = wx.BoxSizer(wx.HORIZONTAL)
+        save_row_2 = wx.BoxSizer(wx.HORIZONTAL)
+        self.btn_save_spectra = wx.Button(scrolled, label="Save Spectra")
+        self.btn_save_positions = wx.Button(scrolled, label="Save Peak Position")
+        self.btn_save_intensities = wx.Button(scrolled, label="Save Peak Intensity")
+        self.btn_save_ratios = wx.Button(scrolled, label="Save Peak Ratios")
         for button, handler in [
             (self.btn_save_spectra, self.on_save_spectra),
             (self.btn_save_positions, self.on_save_positions),
@@ -1310,7 +1428,12 @@ class RamanInsituEchemPanel(wx.Panel):
         ]:
             button.Disable()
             button.Bind(wx.EVT_BUTTON, handler)
-            save_box.Add(button, 0, wx.EXPAND | wx.ALL, 5)
+        save_row_1.Add(self.btn_save_spectra, 1, wx.EXPAND | wx.RIGHT, 5)
+        save_row_1.Add(self.btn_save_positions, 1, wx.EXPAND)
+        save_row_2.Add(self.btn_save_intensities, 1, wx.EXPAND | wx.RIGHT, 5)
+        save_row_2.Add(self.btn_save_ratios, 1, wx.EXPAND)
+        save_box.Add(save_row_1, 0, wx.EXPAND | wx.ALL, 5)
+        save_box.Add(save_row_2, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 5)
         sizer.Add(save_box, 0, wx.EXPAND | wx.ALL, 5)
 
         scrolled.SetSizer(sizer)
@@ -1403,7 +1526,11 @@ class RamanInsituEchemPanel(wx.Panel):
             "window_preview_every_n": self.tc_window_every_n.GetValue(),
             "result_spectra_every_n": self.tc_result_every_n.GetValue(),
             "normalized_peak_cm1": self.choice_normalized_peak.GetStringSelection(),
-            "show_analysis_legend": self.cb_analysis_legend.GetValue(),
+            "inverse_ratio": self.cb_inverse_ratio.GetValue(),
+            "show_analysis_legend": self.cb_spectrum_legend.GetValue(),
+            "show_peak_position_legend": self.cb_peak_position_legend.GetValue(),
+            "show_peak_intensity_legend": self.cb_peak_intensity_legend.GetValue(),
+            "show_peak_ratio_legend": self.cb_peak_ratio_legend.GetValue(),
             "peak_windows": [
                 {
                     "peak_cm1": center_ctrl.GetValue(),
@@ -1451,7 +1578,11 @@ class RamanInsituEchemPanel(wx.Panel):
         self.tc_raman_range_max.SetValue(str(params["raman_range_max_cm1"]))
         self.tc_window_every_n.SetValue(str(params["window_preview_every_n"]))
         self.tc_result_every_n.SetValue(str(params["result_spectra_every_n"]))
-        self.cb_analysis_legend.SetValue(bool(params.get("show_analysis_legend", True)))
+        self.cb_inverse_ratio.SetValue(bool(params.get("inverse_ratio", False)))
+        self.cb_spectrum_legend.SetValue(bool(params.get("show_analysis_legend", True)))
+        self.cb_peak_position_legend.SetValue(bool(params.get("show_peak_position_legend", True)))
+        self.cb_peak_intensity_legend.SetValue(bool(params.get("show_peak_intensity_legend", True)))
+        self.cb_peak_ratio_legend.SetValue(bool(params.get("show_peak_ratio_legend", True)))
 
         self.clear_peak_window_rows()
         for peak, window_size in validated_windows:
@@ -1736,10 +1867,10 @@ class RamanInsituEchemPanel(wx.Panel):
         intensities_ax = figure.add_subplot(223)
         ratios_ax = figure.add_subplot(224)
         every_n = self.read_every_n(self.tc_result_every_n, "Every N for result spectra")
-        self.plot_gradient_spectra(spectra_ax, every_n, x_mode, show_legend=self.cb_analysis_legend.GetValue())
-        self.plot_peak_positions(positions_ax, x_mode)
-        self.plot_peak_intensities(intensities_ax, x_mode)
-        self.plot_ratios(ratios_ax, x_mode)
+        self.plot_gradient_spectra(spectra_ax, every_n, x_mode, show_legend=self.cb_spectrum_legend.GetValue())
+        self.plot_peak_positions(positions_ax, x_mode, show_legend=self.cb_peak_position_legend.GetValue())
+        self.plot_peak_intensities(intensities_ax, x_mode, show_legend=self.cb_peak_intensity_legend.GetValue())
+        self.plot_ratios(ratios_ax, x_mode, show_legend=self.cb_peak_ratio_legend.GetValue())
         figure.tight_layout(pad=1.2)
 
     def plot_spectra_with_windows(self, ax, every_n, x_mode):
@@ -1751,14 +1882,14 @@ class RamanInsituEchemPanel(wx.Panel):
                 window.high_cm1,
                 alpha=0.32,
                 color=color,
-                label=f"{format_peak_label(window.center_cm1)} +/- {window.tolerance_cm1:g}",
+                label=peak_legend_label(window.center_cm1),
             )
-        ax.set_title(f"Every {every_n}-th spectrum with target peak windows")
+        ax.set_title(f"Every {every_n}-th Spectrum with Target Peak Windows")
         ax.legend(title=legend_title_for_mode(x_mode), fontsize=7, ncol=2)
 
     def plot_gradient_spectra(self, ax, every_n, x_mode, show_legend=True):
         self.plot_sequence_spectra(ax, every_n, x_mode, gradient=True)
-        ax.set_title(f"Every {every_n}-th spectrum")
+        ax.set_title(f"Every {every_n}-th Spectrum")
         if show_legend:
             ax.legend(title=legend_title_for_mode(x_mode), fontsize=7, ncol=2)
 
@@ -1780,41 +1911,51 @@ class RamanInsituEchemPanel(wx.Panel):
         ax.set_xlabel("Raman shift (cm$^{-1}$)")
         ax.set_ylabel("Intensity")
         ax.grid(True, alpha=0.3)
-        ax.invert_xaxis()
+        set_raman_xaxis_ascending(ax, self.result.data.raman_cm1)
 
-    def plot_peak_positions(self, ax, x_mode):
+    def plot_peak_positions(self, ax, x_mode, show_legend=True):
         for series in self.result.peak_series:
             x = x_values_for_mode(series, x_mode)
-            ax.plot(x, series.peak_position_cm1, marker="o", markersize=3, linewidth=1, label=f"{format_peak_label(series.window.center_cm1)} +/- {series.window.tolerance_cm1:g}")
+            ax.plot(x, series.peak_position_cm1, marker="o", markersize=3, linewidth=1, label=peak_legend_label(series.window.center_cm1))
         ax.set_xlabel(x_label_for_mode(x_mode))
         ax.set_ylabel("Peak position (cm$^{-1}$)")
-        ax.set_title(f"Peak position vs {x_label_for_mode(x_mode).lower()}")
+        ax.set_title(f"Peak Position vs {x_label_for_mode(x_mode)}")
         ax.grid(True, alpha=0.3)
-        ax.legend(fontsize=7)
+        if show_legend:
+            ax.legend(fontsize=7)
 
-    def plot_peak_intensities(self, ax, x_mode):
+    def plot_peak_intensities(self, ax, x_mode, show_legend=True):
         for series in self.result.peak_series:
             x = x_values_for_mode(series, x_mode)
-            ax.plot(x, series.peak_intensity, marker="o", markersize=3, linewidth=1, label=f"{format_peak_label(series.window.center_cm1)} +/- {series.window.tolerance_cm1:g}")
+            ax.plot(x, series.peak_intensity, marker="o", markersize=3, linewidth=1, label=peak_legend_label(series.window.center_cm1))
         ax.set_xlabel(x_label_for_mode(x_mode))
         ax.set_ylabel("Peak intensity")
-        ax.set_title(f"Peak intensity vs {x_label_for_mode(x_mode).lower()}")
+        ax.set_title(f"Peak Intensity vs {x_label_for_mode(x_mode)}")
         ax.grid(True, alpha=0.3)
-        ax.legend(fontsize=7)
+        if show_legend:
+            ax.legend(fontsize=7)
 
-    def plot_ratios(self, ax, x_mode):
-        norm_label = format_peak_label(self.result.normalized_peak_cm1)
+    def plot_ratios(self, ax, x_mode, show_legend=True):
+        norm_label = peak_legend_label(self.result.normalized_peak_cm1)
+        inverse = self.cb_inverse_ratio.GetValue()
         for ratio in self.result.ratios:
             if np.isclose(ratio.center_cm1, ratio.normalized_center_cm1):
                 continue
             x = x_values_for_mode(ratio, x_mode)
-            ax.plot(x, ratio.ratio, marker="o", markersize=3, linewidth=1, label=f"{format_peak_label(ratio.center_cm1)} / {norm_label}")
-        ax.axhline(1.0, linestyle="--", linewidth=1.2, color="k", label=f"{norm_label} = 1")
+            if inverse:
+                y = np.divide(1.0, ratio.ratio, out=np.full_like(ratio.ratio, np.nan, dtype=float), where=ratio.ratio != 0)
+                label = f"{norm_label} / {peak_legend_label(ratio.center_cm1)}"
+            else:
+                y = ratio.ratio
+                label = f"{peak_legend_label(ratio.center_cm1)} / {norm_label}"
+            ax.plot(x, y, marker="o", markersize=3, linewidth=1, label=label)
+        ax.plot([], [], linestyle="--", linewidth=1.2, color="k", label=f"{norm_label} = 1")
         ax.set_xlabel(x_label_for_mode(x_mode))
         ax.set_ylabel("Peak intensity ratio")
-        ax.set_title(f"Peak intensity ratios normalized to {norm_label}")
+        ax.set_title(f"Peak Intensity Ratios Normalized to {norm_label}")
         ax.grid(True, alpha=0.3)
-        ax.legend(fontsize=7)
+        if show_legend:
+            ax.legend(fontsize=7)
 
     def current_x_mode(self):
         return "time" if self.rb_time.GetValue() else "sequence"
@@ -1881,18 +2022,35 @@ class RamanInsituEchemPanel(wx.Panel):
 
         self.save_individual_plot(
             "spectra",
-            lambda ax, x_mode: self.plot_gradient_spectra(ax, self.read_every_n(self.tc_result_every_n, "Every N for result spectra"), x_mode),
+            lambda ax, x_mode: self.plot_gradient_spectra(
+                ax,
+                self.read_every_n(self.tc_result_every_n, "Every N for result spectra"),
+                x_mode,
+                show_legend=self.cb_spectrum_legend.GetValue(),
+            ),
             write_csv,
         )
 
     def on_save_positions(self, event):
-        self.save_individual_plot("peak_positions", self.plot_peak_positions, lambda path: save_peak_summary_csv(self.result, path))
+        self.save_individual_plot(
+            "peak_positions",
+            lambda ax, x_mode: self.plot_peak_positions(ax, x_mode, show_legend=self.cb_peak_position_legend.GetValue()),
+            lambda path: save_peak_summary_csv(self.result, path),
+        )
 
     def on_save_intensities(self, event):
-        self.save_individual_plot("peak_intensities", self.plot_peak_intensities, lambda path: save_peak_summary_csv(self.result, path))
+        self.save_individual_plot(
+            "peak_intensities",
+            lambda ax, x_mode: self.plot_peak_intensities(ax, x_mode, show_legend=self.cb_peak_intensity_legend.GetValue()),
+            lambda path: save_peak_summary_csv(self.result, path),
+        )
 
     def on_save_ratios(self, event):
-        self.save_individual_plot("ratios", self.plot_ratios, lambda path: save_ratio_csv(self.result, path))
+        self.save_individual_plot(
+            "ratios",
+            lambda ax, x_mode: self.plot_ratios(ax, x_mode, show_legend=self.cb_peak_ratio_legend.GetValue()),
+            lambda path: save_ratio_csv(self.result, path, inverse=self.cb_inverse_ratio.GetValue()),
+        )
 
     def show_warning(self, message):
         wx.MessageBox(message, "Insitu EChem warning", wx.OK | wx.ICON_WARNING, self)
@@ -1906,9 +2064,11 @@ class RamanSubstrateBaselinePanel(wx.Panel):
     def __init__(self, parent):
         super().__init__(parent)
         self.raw_path = ""
+        self.raw_input: RamanBaselineInput | None = None
         self.raw_spectrum = None
         self.wire_path = ""
         self.wire_spectrum = None
+        self.batch_result = None
         self.result = None
         self.fit_running = False
         self.fit_result_cache = {}
@@ -1925,13 +2085,25 @@ class RamanSubstrateBaselinePanel(wx.Panel):
         scrolled = wx.ScrolledWindow(self, style=wx.VSCROLL)
         scrolled.SetScrollRate(0, 20)
         scrolled.SetMinSize((520, -1))
-        box = wx.StaticBoxSizer(wx.VERTICAL, scrolled, "Substrate Baseline")
+        root = wx.BoxSizer(wx.VERTICAL)
 
-        self.btn_load_raw = wx.Button(scrolled, label="Load txt")
+        baseline_box = wx.StaticBoxSizer(wx.VERTICAL, scrolled, "Baseline")
+        self.btn_load_raw = wx.Button(scrolled, label="Load txt/wdf")
         self.lbl_raw = wx.TextCtrl(scrolled, value="No Raman file loaded", style=wx.TE_READONLY)
         self.btn_load_raw.Bind(wx.EVT_BUTTON, self.on_load_raw)
-        box.Add(self.add_load_row(self.btn_load_raw, self.lbl_raw), 0, wx.EXPAND | wx.ALL, 5)
+        baseline_box.Add(self.add_load_row(self.btn_load_raw, self.lbl_raw), 0, wx.EXPAND | wx.ALL, 5)
+        selected_grid = wx.FlexGridSizer(rows=1, cols=3, vgap=6, hgap=6)
+        selected_grid.AddGrowableCol(1, 1)
+        self.tc_baseline_selected = wx.TextCtrl(scrolled, value="1")
+        self.btn_update_baseline_preview = wx.Button(scrolled, label="Update")
+        self.btn_update_baseline_preview.Bind(wx.EVT_BUTTON, self.on_update_preview)
+        selected_grid.Add(wx.StaticText(scrolled, label="Selected columns"), 0, wx.ALIGN_CENTER_VERTICAL)
+        selected_grid.Add(self.tc_baseline_selected, 0, wx.EXPAND | wx.ALIGN_CENTER_VERTICAL)
+        selected_grid.Add(self.btn_update_baseline_preview, 0, wx.EXPAND | wx.ALIGN_CENTER_VERTICAL)
+        baseline_box.Add(selected_grid, 0, wx.EXPAND | wx.ALL, 5)
+        root.Add(baseline_box, 0, wx.EXPAND | wx.ALL, 5)
 
+        fitting_box = wx.StaticBoxSizer(wx.VERTICAL, scrolled, "Fitting Parameters")
         method_grid = wx.FlexGridSizer(rows=1, cols=2, vgap=6, hgap=6)
         method_grid.AddGrowableCol(1, 1)
         self.choice_method = wx.Choice(scrolled, choices=[METHOD_ASPLS, METHOD_DRPLS, METHOD_BACKCOR])
@@ -1939,7 +2111,7 @@ class RamanSubstrateBaselinePanel(wx.Panel):
         self.choice_method.Bind(wx.EVT_CHOICE, self.on_method_changed)
         method_grid.Add(wx.StaticText(scrolled, label="Fitting method"), 0, wx.ALIGN_CENTER_VERTICAL)
         method_grid.Add(self.choice_method, 0, wx.EXPAND | wx.ALIGN_CENTER_VERTICAL)
-        box.Add(method_grid, 0, wx.EXPAND | wx.ALL, 5)
+        fitting_box.Add(method_grid, 0, wx.EXPAND | wx.ALL, 5)
 
         mode_row = wx.BoxSizer(wx.HORIZONTAL)
         self.rb_auto = wx.RadioButton(scrolled, label="Auto", style=wx.RB_GROUP)
@@ -1950,7 +2122,7 @@ class RamanSubstrateBaselinePanel(wx.Panel):
         mode_row.Add(wx.StaticText(scrolled, label="Parameter mode"), 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 12)
         mode_row.Add(self.rb_auto, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 16)
         mode_row.Add(self.rb_manual, 0, wx.ALIGN_CENTER_VERTICAL)
-        box.Add(mode_row, 0, wx.EXPAND | wx.ALL, 5)
+        fitting_box.Add(mode_row, 0, wx.EXPAND | wx.ALL, 5)
 
         param_grid = wx.FlexGridSizer(rows=3, cols=2, vgap=6, hgap=6)
         param_grid.AddGrowableCol(1, 1)
@@ -1966,32 +2138,35 @@ class RamanSubstrateBaselinePanel(wx.Panel):
         param_grid.Add(self.tc_param2, 0, wx.EXPAND | wx.ALIGN_CENTER_VERTICAL)
         param_grid.Add(self.lbl_param3, 0, wx.ALIGN_CENTER_VERTICAL)
         param_grid.Add(self.tc_param3, 0, wx.EXPAND | wx.ALIGN_CENTER_VERTICAL)
-        box.Add(param_grid, 0, wx.EXPAND | wx.ALL, 5)
+        fitting_box.Add(param_grid, 0, wx.EXPAND | wx.ALL, 5)
 
+        self.btn_fit = wx.Button(scrolled, label="Fit")
+        self.btn_fit.Bind(wx.EVT_BUTTON, self.on_fit)
+        fitting_box.Add(self.btn_fit, 0, wx.EXPAND | wx.ALL, 5)
+        root.Add(fitting_box, 0, wx.EXPAND | wx.ALL, 5)
+
+        save_box = wx.StaticBoxSizer(wx.VERTICAL, scrolled, "Save")
         self.btn_load_wire = wx.Button(scrolled, label="Load fitted")
         self.lbl_wire = wx.TextCtrl(scrolled, value="No fitted result loaded", style=wx.TE_READONLY)
         self.btn_load_wire.Bind(wx.EVT_BUTTON, self.on_load_wire)
-        box.Add(self.add_load_row(self.btn_load_wire, self.lbl_wire), 0, wx.EXPAND | wx.ALL, 5)
+        save_box.Add(self.add_load_row(self.btn_load_wire, self.lbl_wire), 0, wx.EXPAND | wx.ALL, 5)
 
         output_grid = wx.FlexGridSizer(rows=1, cols=2, vgap=6, hgap=6)
         output_grid.AddGrowableCol(1, 1)
         self.tc_output_name = wx.TextCtrl(scrolled, value="")
         output_grid.Add(wx.StaticText(scrolled, label="Output filename"), 0, wx.ALIGN_CENTER_VERTICAL)
         output_grid.Add(self.tc_output_name, 0, wx.EXPAND | wx.ALIGN_CENTER_VERTICAL)
-        box.Add(output_grid, 0, wx.EXPAND | wx.ALL, 5)
+        save_box.Add(output_grid, 0, wx.EXPAND | wx.ALL, 5)
 
-        button_row = wx.BoxSizer(wx.HORIZONTAL)
-        self.btn_fit = wx.Button(scrolled, label="Fit")
         self.btn_save = wx.Button(scrolled, label="Save")
         self.btn_save.Disable()
-        self.btn_fit.Bind(wx.EVT_BUTTON, self.on_fit)
         self.btn_save.Bind(wx.EVT_BUTTON, self.on_save)
-        button_row.Add(self.btn_fit, 1, wx.EXPAND | wx.RIGHT, 5)
-        button_row.Add(self.btn_save, 1, wx.EXPAND)
-        box.Add(button_row, 0, wx.EXPAND | wx.ALL, 5)
+        save_box.Add(self.btn_save, 0, wx.EXPAND | wx.ALL, 5)
+        root.Add(save_box, 0, wx.EXPAND | wx.ALL, 5)
 
-        scrolled.SetSizer(box)
+        scrolled.SetSizer(root)
         self.update_parameter_controls()
+        self.update_preview_selection_controls()
         return scrolled
 
     def build_right_panel(self):
@@ -2030,23 +2205,26 @@ class RamanSubstrateBaselinePanel(wx.Panel):
         return row
 
     def on_load_raw(self, event):
-        paths = self.open_txt_file("Load Raman TXT file")
+        paths = self.open_raman_file("Load Raman TXT/WDF file")
         if not paths:
             return
         path = paths[0]
         try:
-            self.raw_spectrum = read_raman_txt(path)
+            self.raw_input = read_raman_baseline_input(path)
         except Exception as exc:
             self.show_warning(str(exc))
             return
+        self.raw_spectrum = self.raw_input.spectra[0]
         self.raw_path = path
+        self.batch_result = None
         self.result = None
         self.lbl_raw.SetValue(Path(path).name)
         self.tc_output_name.SetValue(default_output_name(path))
         self.btn_save.Disable()
+        self.update_preview_selection_controls()
         self.draw_loaded_raw()
-        self.log(f"Loaded Raman file: {Path(path).name}.")
-        log_usage_event(self, "raman_baseline_raw_loaded", file_metadata(path))
+        self.log(f"Loaded Raman file: {Path(path).name}; {self.raw_input.n_spectra} spectrum/spectra.")
+        log_usage_event(self, "raman_baseline_raw_loaded", {"spectra": self.raw_input.n_spectra, **file_metadata(path)})
         if self.rb_auto.GetValue():
             self.start_fit("Auto fitting after Raman file load.")
 
@@ -2078,6 +2256,23 @@ class RamanSubstrateBaselinePanel(wx.Panel):
                 return []
             return [dialog.GetPath()]
 
+    def open_raman_file(self, title):
+        with wx.FileDialog(
+            self,
+            title,
+            wildcard="Raman files (*.wdf;*.txt)|*.wdf;*.txt|WDF files (*.wdf)|*.wdf|Text files (*.txt)|*.txt|All files (*.*)|*.*",
+            style=wx.FD_OPEN | wx.FD_FILE_MUST_EXIST,
+        ) as dialog:
+            if dialog.ShowModal() != wx.ID_OK:
+                return []
+            return [dialog.GetPath()]
+
+    def on_update_preview(self, event):
+        if self.batch_result is not None:
+            self.draw_result()
+        elif self.raw_input is not None:
+            self.draw_loaded_raw()
+
     def on_method_changed(self, event):
         self.update_parameter_controls()
         if self.raw_spectrum is not None and self.rb_auto.GetValue():
@@ -2095,7 +2290,7 @@ class RamanSubstrateBaselinePanel(wx.Panel):
         if self.fit_running:
             self.show_warning("A Raman baseline fit is already running.")
             return
-        if self.raw_spectrum is None:
+        if self.raw_input is None:
             self.show_warning("Load a Raman file before fitting.")
             return
         try:
@@ -2103,7 +2298,7 @@ class RamanSubstrateBaselinePanel(wx.Panel):
         except Exception as exc:
             self.show_warning(str(exc))
             return
-        cache_key = self.fit_cache_key(self.raw_spectrum, settings)
+        cache_key = self.fit_cache_key(self.raw_input, settings)
         cached_result = self.fit_result_cache.get(cache_key)
         if cached_result is not None:
             self.log(f"{message} Reused cached Raman baseline fit.")
@@ -2115,34 +2310,46 @@ class RamanSubstrateBaselinePanel(wx.Panel):
         self.fit_started_at = time.monotonic()
         self.update_buttons()
         self.log(message)
-        log_usage_event(self, "raman_baseline_fit_started", {"method": settings.method, "auto": settings.auto})
-        threading.Thread(target=self.fit_worker, args=(self.raw_spectrum, settings, cache_key), daemon=True).start()
+        log_usage_event(self, "raman_baseline_fit_started", {"method": settings.method, "auto": settings.auto, "spectra": self.raw_input.n_spectra})
+        threading.Thread(target=self.fit_worker, args=(self.raw_input, settings, cache_key), daemon=True).start()
 
-    def fit_worker(self, spectrum, settings, cache_key):
+    def fit_worker(self, source, settings, cache_key):
         try:
-            result = fit_raman_baseline(spectrum, settings)
+            result = fit_raman_baseline_input(source, settings)
             wx.CallAfter(self.on_fit_result, result, cache_key)
         except Exception as exc:
             wx.CallAfter(self.on_fit_error, f"Raman baseline fit failed: {exc}")
 
-    def on_fit_result(self, result, cache_key=None, log_finished=True):
-        self.result = result
+    def on_fit_result(self, batch_result, cache_key=None, log_finished=True):
+        if hasattr(batch_result, "first_result"):
+            self.batch_result = batch_result
+            self.result = batch_result.first_result
+            spectra_count = batch_result.source.n_spectra
+        else:
+            self.result = batch_result
+            spectra_count = 1
         if cache_key is not None:
-            self.fit_result_cache[cache_key] = result
+            self.fit_result_cache[cache_key] = batch_result
         self.fit_running = False
         self.update_buttons()
         self.draw_result()
-        self.log_selected_parameters(result)
+        self.log_selected_parameters(self.result)
         duration_ms = int((time.monotonic() - self.fit_started_at) * 1000) if self.fit_started_at is not None else 0
         self.fit_started_at = None
         if log_finished:
             log_usage_event(
                 self,
                 "raman_baseline_fit_finished",
-                {"method": result.method, "auto": result.auto, "duration_ms": duration_ms, "candidates": len(result.search_records)},
+                {
+                    "method": self.result.method,
+                    "auto": self.result.auto,
+                    "duration_ms": duration_ms,
+                    "candidates": len(self.result.search_records),
+                    "spectra": spectra_count,
+                },
             )
-        if result.auto:
-            self.log(f"Evaluated {len(result.search_records)} automatic parameter candidate(s).")
+        if self.result.auto:
+            self.log(f"Evaluated {len(self.result.search_records)} automatic parameter candidate(s) for {spectra_count} spectrum/spectra.")
 
     def on_fit_error(self, message):
         self.fit_running = False
@@ -2153,7 +2360,7 @@ class RamanSubstrateBaselinePanel(wx.Panel):
         self.show_warning(message)
 
     def on_save(self, event):
-        if self.result is None:
+        if self.batch_result is None:
             self.show_warning("Run Raman baseline fitting before saving.")
             return
         output_name = self.tc_output_name.GetValue().strip()
@@ -2166,7 +2373,7 @@ class RamanSubstrateBaselinePanel(wx.Panel):
         if output_path.suffix == "":
             output_path = output_path.with_suffix(".txt")
         try:
-            saved_path = save_corrected_txt(self.result, output_path)
+            saved_path = save_corrected_baseline_input(self.batch_result, output_path)
         except Exception as exc:
             self.show_warning(str(exc))
             return
@@ -2208,12 +2415,13 @@ class RamanSubstrateBaselinePanel(wx.Panel):
         )
 
     @staticmethod
-    def fit_cache_key(spectrum, settings):
+    def fit_cache_key(source, settings):
         digest = hashlib.blake2b(digest_size=16)
-        x = np.ascontiguousarray(spectrum.raman_shift, dtype=np.float64)
-        y = np.ascontiguousarray(spectrum.intensity, dtype=np.float64)
-        digest.update(x.tobytes())
-        digest.update(y.tobytes())
+        for spectrum in source.spectra:
+            x = np.ascontiguousarray(spectrum.raman_shift, dtype=np.float64)
+            y = np.ascontiguousarray(spectrum.intensity, dtype=np.float64)
+            digest.update(x.tobytes())
+            digest.update(y.tobytes())
         settings_key = (
             settings.method,
             bool(settings.auto),
@@ -2227,7 +2435,7 @@ class RamanSubstrateBaselinePanel(wx.Panel):
             None if settings.threshold_value is None else float(settings.threshold_value),
             float(settings.below_baseline_fraction),
         )
-        return (spectrum.name, len(x), digest.hexdigest(), settings_key)
+        return (source.source_path.name, source.input_format, source.n_spectra, digest.hexdigest(), settings_key)
 
     @staticmethod
     def parse_int_list(text, name):
@@ -2301,19 +2509,52 @@ class RamanSubstrateBaselinePanel(wx.Panel):
         self.btn_load_raw.Enable(enabled)
         self.btn_load_wire.Enable(enabled)
         self.btn_fit.Enable(enabled)
-        self.btn_save.Enable(enabled and self.result is not None)
+        self.btn_save.Enable(enabled and self.batch_result is not None)
+        self.update_preview_selection_controls()
+
+    def update_preview_selection_controls(self):
+        has_multi = self.raw_input is not None and self.raw_input.n_spectra > 1 and not self.fit_running
+        if hasattr(self, "tc_baseline_selected"):
+            self.tc_baseline_selected.Enable(has_multi)
+        if hasattr(self, "btn_update_baseline_preview"):
+            self.btn_update_baseline_preview.Enable(has_multi)
+
+    def selected_preview_indices(self):
+        if self.raw_input is None:
+            return []
+        if self.raw_input.n_spectra <= 1:
+            return [0]
+        return parse_selected_spectra(self.tc_baseline_selected.GetValue(), self.raw_input.n_spectra)
+
+    def baseline_spectrum_label(self, index):
+        if self.raw_input is None:
+            return ""
+        if self.raw_input.labels and index < len(self.raw_input.labels):
+            label = self.raw_input.labels[index]
+            if self.raw_input.input_format == "time":
+                return f"Time {label:g}"
+            return f"Seq {label:g}"
+        return f"Seq {index + 1}"
 
     def draw_loaded_raw(self):
         self.figure_preview.clear()
         raw_ax = self.figure_preview.add_subplot(211)
         corrected_ax = self.figure_preview.add_subplot(212)
-        x = self.raw_spectrum.raman_shift
-        y = self.raw_spectrum.intensity
-        raw_ax.plot(x, y, label="Raw Raman spectrum", linewidth=1.2)
-        raw_ax.set_title("Raw Raman spectrum")
+        if self.raw_input is None:
+            self.clear_preview()
+            return
+        try:
+            selected = self.selected_preview_indices()
+        except Exception as exc:
+            self.log(f"Preview update warning: {exc}")
+            selected = [0]
+        for index in selected:
+            spectrum = self.raw_input.spectra[index]
+            raw_ax.plot(spectrum.raman_shift, spectrum.intensity, label=self.baseline_spectrum_label(index), linewidth=1.2)
+        raw_ax.set_title("Raw Raman Spectrum")
         raw_ax.set_xlabel("Raman shift / cm$^{-1}$")
         raw_ax.set_ylabel("Intensity")
-        self.apply_raman_axis_style(raw_ax, x)
+        self.apply_raman_axis_style(raw_ax, self.raw_input.spectra[selected[0]].raman_shift)
         corrected_ax.text(
             0.5,
             0.5,
@@ -2330,23 +2571,39 @@ class RamanSubstrateBaselinePanel(wx.Panel):
         self.figure_preview.clear()
         raw_ax = self.figure_preview.add_subplot(211)
         corrected_ax = self.figure_preview.add_subplot(212)
-        x = self.result.spectrum.raman_shift
-        raw_ax.plot(x, self.result.spectrum.intensity, label="Raw Raman spectrum", linewidth=1.2)
-        raw_ax.plot(x, self.result.baseline, label="Estimated baseline", linewidth=1.8)
-        raw_ax.set_title("Raw Raman spectrum with estimated baseline")
+        if self.batch_result is None:
+            self.draw_loaded_raw()
+            return
+        try:
+            selected = self.selected_preview_indices()
+        except Exception as exc:
+            self.log(f"Preview update warning: {exc}")
+            selected = [0]
+        for index in selected:
+            result = self.batch_result.results[index]
+            x = result.spectrum.raman_shift
+            label = self.baseline_spectrum_label(index)
+            raw_ax.plot(x, result.spectrum.intensity, label=f"{label} raw", linewidth=1.2)
+            raw_ax.plot(x, result.baseline, label=f"{label} baseline", linewidth=1.8)
+        raw_ax.set_title("Raw Raman Spectrum with Estimated Baseline")
         raw_ax.set_xlabel("Raman shift / cm$^{-1}$")
         raw_ax.set_ylabel("Intensity")
-        self.apply_raman_axis_style(raw_ax, x)
+        self.apply_raman_axis_style(raw_ax, self.batch_result.results[selected[0]].spectrum.raman_shift)
 
-        corrected_ax.plot(x, self.result.corrected, label="Baseline-corrected Raman spectrum", linewidth=1.2)
-        if self.wire_spectrum is not None:
+        for index in selected:
+            result = self.batch_result.results[index]
+            x = result.spectrum.raman_shift
+            label = self.baseline_spectrum_label(index)
+            corrected_ax.plot(x, result.corrected, label=f"{label} corrected", linewidth=1.2)
+        if self.wire_spectrum is not None and len(selected) == 1:
+            x = self.batch_result.results[selected[0]].spectrum.raman_shift
             wire_on_x = interpolate_to_reference_x(self.wire_spectrum.raman_shift, self.wire_spectrum.intensity, x)
             corrected_ax.plot(x, wire_on_x, label="WiRE software analysed results", linewidth=1.2)
         corrected_ax.axhline(0, linewidth=1.0, color="k")
-        corrected_ax.set_title("Baseline-corrected Raman spectrum")
+        corrected_ax.set_title("Baseline-Corrected Raman Spectrum")
         corrected_ax.set_xlabel("Raman shift / cm$^{-1}$")
         corrected_ax.set_ylabel("Corrected intensity")
-        self.apply_raman_axis_style(corrected_ax, x)
+        self.apply_raman_axis_style(corrected_ax, self.batch_result.results[selected[0]].spectrum.raman_shift)
         self.figure_preview.tight_layout(pad=1.2)
         self.canvas_preview.draw()
 
@@ -2378,6 +2635,7 @@ class RamanSubstrateBaselinePanel(wx.Panel):
         return {
             "raw_path": self.raw_path,
             "wire_path": self.wire_path,
+            "selected_columns": self.tc_baseline_selected.GetValue(),
             "method": self.choice_method.GetStringSelection(),
             "auto": self.rb_auto.GetValue(),
             "param1": self.tc_param1.GetValue(),
@@ -2400,27 +2658,33 @@ class RamanSubstrateBaselinePanel(wx.Panel):
         self.tc_param1.SetValue(str(params.get("param1", self.tc_param1.GetValue())))
         self.tc_param2.SetValue(str(params.get("param2", self.tc_param2.GetValue())))
         self.tc_param3.SetValue(str(params.get("param3", self.tc_param3.GetValue())))
+        self.tc_baseline_selected.SetValue(str(params.get("selected_columns", self.tc_baseline_selected.GetValue())))
         self.tc_output_name.SetValue(str(params.get("output_name", self.tc_output_name.GetValue())))
+        self.batch_result = None
         self.result = None
         self.btn_save.Disable()
 
         raw_path = str(params.get("raw_path", "") or "")
         if raw_path:
             try:
-                self.raw_spectrum = read_raman_txt(raw_path)
+                self.raw_input = read_raman_baseline_input(raw_path)
+                self.raw_spectrum = self.raw_input.spectra[0]
                 self.raw_path = raw_path
                 self.lbl_raw.SetValue(Path(raw_path).name)
                 if not self.tc_output_name.GetValue().strip():
                     self.tc_output_name.SetValue(default_output_name(raw_path))
+                self.update_preview_selection_controls()
                 self.draw_loaded_raw()
                 self.log(f"Restored Raman file: {Path(raw_path).name}.")
             except Exception as exc:
                 self.raw_path = raw_path
+                self.raw_input = None
                 self.raw_spectrum = None
                 self.lbl_raw.SetValue(Path(raw_path).name)
                 self.log(f"Could not restore Raman file: {exc}")
         else:
             self.raw_path = ""
+            self.raw_input = None
             self.raw_spectrum = None
             self.lbl_raw.SetValue("No Raman file loaded")
 
@@ -2442,6 +2706,7 @@ class RamanSubstrateBaselinePanel(wx.Panel):
             self.lbl_wire.SetValue("No fitted result loaded")
         if self.raw_spectrum is None:
             self.clear_preview()
+        self.update_preview_selection_controls()
 
     def log_selected_parameters(self, result):
         params = result.selected_parameters
@@ -2465,8 +2730,7 @@ class RamanSubstrateBaselinePanel(wx.Panel):
     def apply_raman_axis_style(ax, x):
         ax.grid(True, which="both", axis="both")
         ax.autoscale(enable=True, axis="both", tight=True)
-        if len(x) > 1 and x[0] > x[-1]:
-            ax.invert_xaxis()
+        set_raman_xaxis_ascending(ax, x)
         if ax.lines:
             ax.legend(fontsize=8)
 

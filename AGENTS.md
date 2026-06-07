@@ -1,10 +1,10 @@
-# Agent Instructions for Controllers & Analysers
+﻿# Agent Instructions for Controllers & Analysers
 
 This file is the source of truth for coding agents working inside the `ca_app` project.
 
 ## 1. Active Project
 
-The active runnable application is the packaged v16.11.260607.0040 application:
+The active runnable application is the packaged v16.17.260608.0011 application:
 
 Version format:
 
@@ -12,12 +12,12 @@ Version format:
 v<major>.<minor>.<YYMMDD>.<HHMM>
 ```
 
-For `v16.11.260607.0040`:
+For `v16.17.260608.0011`:
 
 - `v16` is the larger version change.
-- `.11` is the smaller version number within v16.
-- `260607` is the date of the change in YYMMDD format.
-- `0040` is the exact 24-hour time when Codex, the coding agent, changed code or project files.
+- `.17` is the smaller version number within v16.
+- `260608` is the date of the change in YYMMDD format.
+- `0011` is the exact 24-hour time when Codex, the coding agent, changed code or project files.
 
 Whenever Codex implements changes from a plan, increment the smaller version number, update the date, update the exact 24-hour time, and propagate the new version to the program window title, About/Versions text, package metadata, and project documentation.
 
@@ -206,7 +206,7 @@ tests/
 
 ## 5. Refactor Rule
 
-The v16.11.260607.0040 application separates the main shell from independent workspace panels. The AFM/KPFM controller panel still intentionally keeps the tested Keithley runtime behavior together to avoid changing hardware semantics during naming and structure cleanup.
+The v16.17.260608.0011 application separates the main shell from independent workspace panels. The AFM/KPFM controller panel still intentionally keeps the tested Keithley runtime behavior together to avoid changing hardware semantics during naming and structure cleanup.
 
 When refactoring further:
 
@@ -242,6 +242,7 @@ Preserve these unless the user explicitly changes them.
 
 Preserve current GUI behavior:
 
+- Figure titles should use title case, keeping small connector words such as `to`, `vs`, `and`, and `with` lower-case unless an acronym, unit, chemical/scientific notation, or user-provided label needs a special spelling.
 - Fixed left/right layout, not a resizable splitter.
 - COM port defaults to editable `COM3` in each hardware controller tab.
 - Baudrate defaults to `38400` and is selectable from `9600`, `19200`, `38400`, and `57600` in each hardware controller tab.
@@ -429,7 +430,7 @@ Automatic app-state restore is separate from manual Save Parameters / Load Param
 
 Usage logs are separate from app-state restore and manual parameter files:
 
-- Logs are written under the same per-user application-data root as `app_state.json`, inside `usage_logs/`.
+- Logs are written in the software folder, inside `usage_logs/`, next to `run_ca_app.py`.
 - Files are daily JSONL files named `usage_YYYYMMDD.jsonl`.
 - Default retention is 30 days.
 - Logging is best-effort and must never block GUI actions, hardware actions, fitting, loading, or saving.
@@ -469,11 +470,15 @@ The active Raman workspace is available from:
 View -> Raman -> Baseline
 ```
 
-The Raman workspace uses the same fixed left/right layout style as APS:
+The Raman Baseline workspace uses the same fixed left/right layout style as APS:
 
-- Left side: file loading, method selection, parameters, output filename, Fit, and Save.
+- Left side: `Baseline`, `Fitting Parameters`, and `Save` sections.
 - Right side: one `Preview` tab containing two stacked figures.
 - Bottom-right: Raman log.
+
+The `Baseline` section contains `Load txt/wdf`, loaded file name, `Selected columns`, and `Update`.
+The `Fitting Parameters` section contains method, parameter mode, lambda/order values, k/eta/threshold values, and the below-baseline fraction where relevant.
+The `Save` section contains `Load fitted`, fitted file name, output filename, `Fit`, and `Save`.
 
 Preview layout:
 
@@ -483,7 +488,9 @@ Preview
   bottom: baseline-corrected Raman spectrum, with optional WiRE software analysed result overlay
 ```
 
-Raman text files use the same two-column numeric format as the example files:
+Raman shift preview axes display from smaller wavenumbers on the left to larger wavenumbers on the right, even when input files store wavenumbers in descending order.
+
+Raman Baseline input supports single-spectrum TXT/WDF and multi-spectrum TXT/WDF files. Single-spectrum TXT files use the same two-column numeric format as the example files:
 
 ```text
 #Wave    #Intensity
@@ -491,7 +498,11 @@ Raman text files use the same two-column numeric format as the example files:
 ...
 ```
 
-The loader accepts at least two numeric columns and uses the first two numeric columns as Raman shift and intensity.
+The single-spectrum loader accepts at least two numeric columns and uses the first two numeric columns as Raman shift and intensity.
+
+Multi-spectrum TXT files may use `#Time/#Wave/#Intensity`, `#Sequence/#Wave/#Intensity`, or Origin-style wide data where the first numeric column is wavenumber and remaining numeric columns are spectra. Multi-spectrum WDF files are loaded through the same WDF reader used by Mapping and Insitu EChem. Baseline correction is applied to every spectrum with the selected fitting settings.
+
+`Selected columns` accepts 1-based spectrum selections such as `1,2-4,5` and controls preview only. Users must click `Update` to redraw the selected preview spectra. When only one spectrum is loaded, `Selected columns` and `Update` are disabled.
 
 Fitting methods:
 
@@ -537,7 +548,7 @@ Auto/manual behavior:
 Output behavior:
 
 - Output filename defaults to the raw file stem plus `_Copy.txt`.
-- Save writes only the baseline-corrected spectrum in two-column text format.
+- Save writes only baseline-corrected intensity. Single-spectrum inputs save two-column TXT. Time-sequence inputs save `#Time/#Wave/#Intensity`. Sequence and WDF multi-spectrum inputs save `#Sequence/#Wave/#Intensity`. Origin-style wide inputs save the same wide three-header-row layout.
 - Optional WiRE software analysed results can be loaded from a `_Copy.txt` file and overlaid on the corrected-spectrum figure only.
 
 ## 14. Raman Mapping
@@ -550,7 +561,7 @@ View -> Raman -> Mapping
 
 Mapping follows the same fixed left/right layout style:
 
-- Left side: Parameters, Load file, Averaging, Mapping & Selecting, and Save.
+- Left side: Parameters, Load file, Save file, Mapping & Selecting, and Save.
 - Right side: preview notebook with `Avg./Norm.`, `Raw data`, `Location`, and `Selected`.
 - Bottom-right: Mapping log.
 
@@ -562,9 +573,11 @@ Input support:
 Mapping behavior:
 
 - Load WDF/TXT and unstack spectra into a wide table where column 1 is wavenumber, column 2 onward are individual spectra, then averaged intensity, then normalised intensity.
-- `Save` in Averaging exports Origin-friendly TXT with long-name and unit rows.
+- `Save` in Save file exports Origin-friendly TXT. The `Averaged` and `Normalised` checkboxes decide whether averaged intensity and normalised intensity columns are included.
+- Mapping Save file TXT uses three header rows: repeated `Intensity` long names without spectrum numbers, `cm\+(-1)` as the wavenumber unit, and `Sequence 1`, `Sequence 2`, etc. in the third header row.
 - `Every N for preview` and `Legend` live in the Load file section. `Every N = 1` plots all spectra; `Every N > 1` plots every N-th spectrum in `Raw data`.
-- The Mapping `Legend` checkbox affects only the `Raw data` tab and is enabled only when `Every N > 1`.
+- The Mapping `Legend` checkbox affects only the `Raw data` tab and remains available for `Every N = 1`.
+- Raman Mapping spectrum preview axes display from smaller wavenumbers on the left to larger wavenumbers on the right.
 - `Mapping & Selecting` uses Raman range min/max fields and a 1-based selected-column list with inclusive ranges such as `1,2-4,5` or `45-60`.
 - `Save selected` exports `#Sequence`, `#Wave`, `#Intensity` TXT compatible with Insitu EChem.
 - `Load to Insitu Echem` transfers the selected spectra in memory to the Insitu EChem tab and does not create an automatic hidden TXT file.
@@ -633,7 +646,7 @@ Window section:
 
 - Each row contains a peak position and window size.
 - Users can add peak/window rows and delete the last peak/window row. The final remaining row cannot be deleted.
-- Valid peak/window edits auto-update the preview; the `Update` button forces an immediate refresh when delayed text updates do not fire cleanly.
+- Valid peak/window edits auto-update the preview; the `Update Figure` button forces an immediate refresh when delayed text updates do not fire cleanly.
 - For each peak window, the analysis extracts the local maximum intensity and its Raman shift for every sequence.
 
 Right preview tabs:
@@ -647,17 +660,21 @@ Analysis
     top-left: every N-th spectrum with red-to-green sequence/time gradient
     top-right: peak positions vs selected x-axis
     bottom-left: peak intensities vs selected x-axis
-    bottom-right: intensity ratios normalized to the selected peak
+    bottom-right: intensity ratios normalized to the selected peak, or inverse ratios when `inverse` is checked
 ```
 
-The `Peak windows` preview uses distinct colors for each peak-window span. The `Legend` checkbox beside `Update` affects only the top-left every-N spectrum plot in the `Analysis` tab and must not change legends on other figures.
+The Figure section has one legend row with four checkboxes: `Spectrum`, `Peak Position`, `Peak Intensity`, and `Peak Ratio`. These checkboxes independently control legends on the top-left spectrum, top-right peak-position, bottom-left peak-intensity, and bottom-right ratio plots.
 
-Save buttons:
+Peak legends must use only the peak number and wavenumber unit, for example `1420 cm$^{-1}$`. Do not include `+/-` window-size text in peak legends.
 
-- `Save spectra plot/data`
-- `Save peak positions plot/data`
-- `Save peak intensities plot/data`
-- `Save ratios plot/data`
+Insitu EChem spectrum preview axes display from smaller wavenumbers on the left to larger wavenumbers on the right.
+
+Save Plot/Data buttons:
+
+- `Save Spectra`
+- `Save Peak Position`
+- `Save Peak Intensity`
+- `Save Peak Ratios`
 
 Each button saves one PNG and one CSV for the corresponding result plot.
 
@@ -672,7 +689,7 @@ View -> Raman -> Electrical
 The Electrical workspace uses the same fixed left/right layout style:
 
 - Left side: Electrical CSV loading, one shared Raw data preview-duration control, and V_Gate/V_Drain preview-duration controls.
-- Right side: preview notebook with `Raw data` and `V_Gate/V_Drain`.
+- Right side: preview notebook with `Raw data`, `V_Gate/V_Drain`, and `V_Gate/I_Drain`.
 - Bottom-right: Electrical log.
 
 Input CSV files use exact column names from the measurement program:
@@ -688,6 +705,7 @@ Preview behavior:
 - `Raw data` shows four figures in this order: Gate V, Drain V, Gate I, Drain I.
 - Raw traces automatically adjust linewidth from the shared `Raw data / s` control: shorter preview windows use wider lines, and longer preview windows use thinner lines so individual pulses remain visible.
 - `V_Gate/V_Drain` shows the first selected seconds of V_Gate and V_Drain on the same figure with two y-axes.
+- `V_Gate/I_Drain` shows Drain current only in mA. Gate-voltage pulse intervals are drawn as semi-transparent red spans from pulse start to pulse end. It uses the shared `Raw data / s` control and the same automatic linewidth scaling as the raw traces.
 - Preview controls use typed seconds boxes and uneven sliders. The Electrical section has one shared `Raw data / s` control for all four raw-data plots; the Preview section has separate `V_Gate / s` and `V_Drain / s` controls. Slider-derived displayed values are rounded to 1 decimal place.
 - Figure labels use subscript-style Matplotlib labels for V_Gate, V_Drain, I_Gate, and I_Drain where supported; wx labels use ASCII text such as `V_Gate`.
 
@@ -700,7 +718,7 @@ V_Gate
 V_Drain
 ```
 
-For V_Gate and V_Drain, show classification (`const`, `pulse`, `changing`, or `missing`), constant voltage, pulse count, initial pulse time, and pulse duration. If not applicable, show `-`.
+For V_Gate and V_Drain, show classification (`const`, `pulse`, `changing`, or `missing`), voltage value, pulse count, initial pulse time, and pulse duration. If the trace is constant, voltage value is the constant voltage. If the trace is pulsed, voltage value is the pulse voltage. If not applicable, show `-`.
 
 ## 17. Testing Checklist
 
@@ -741,6 +759,9 @@ Manual GUI checks without hardware:
 26. A normal finish, STOP, or exception sends current 0 and output OFF before serial close.
 27. Changing calibration fit method/range during a running sequence does not affect the active run current; changes apply only to preview and the next `START`.
 28. Keithley run data is saved only via `Save Keithley CSV`.
+
+
+
 
 
 

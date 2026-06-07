@@ -1,4 +1,4 @@
-# APS, DWF, DOS, And SPV
+﻿# APS, DWF, DOS, And SPV
 
 The APS workspace lives in `aps_panel.py`; core logic lives in `core/aps_analysis.py`.
 
@@ -21,4 +21,7 @@ Core import functions read numeric data and DAT metadata. Save functions write O
 ## Maintenance Notes
 
 Keep settings parsing in the panel and data processing in `core/aps_analysis.py`. When adding a new APS output, add a focused test for the generated CSV shape and header.
+
+
+
 

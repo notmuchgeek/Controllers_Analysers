@@ -1,4 +1,4 @@
-# AFM/KPFM Controller
+﻿# AFM/KPFM Controller
 
 The AFM/KPFM controller is the most hardware-sensitive area. Preserve behavior unless a change has explicit review.
 
@@ -44,4 +44,7 @@ Normal finish, STOP, and exceptions should attempt:
 1. set source current to 0
 2. send `:OUTP OFF`
 3. close serial
+
+
+
 

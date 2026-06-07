@@ -1,6 +1,6 @@
-# Testing
+﻿# Testing
 
-Version: `v16.11.260607.0040`
+Version: `v16.17.260608.0011`
 
 Testing has two layers: automated non-hardware tests and manual GUI checks. Hardware tests require explicit user confirmation.
 
@@ -26,7 +26,7 @@ python run_ca_app.py
 Confirm that the window title is:
 
 ```text
-Controller & Analysers v16.11.260607.0040
+Controller & Analysers v16.17.260608.0011
 ```
 
 Open `Help -> About` and confirm the same version appears in the Versions section.
@@ -54,15 +54,19 @@ Without connecting hardware, verify:
 
 Baseline:
 
-- `Load txt` loads a two-column Raman file.
+- `Load txt/wdf` loads a two-column Raman file, sequence TXT, or WDF.
+- Multi-spectrum Baseline inputs enable `Selected columns` and require `Update` to redraw preview selections.
+- Single-spectrum Baseline inputs disable `Selected columns` and `Update`.
 - Auto mode fits after loading.
 - Manual mode waits for `Fit`.
-- Save writes two-column corrected data.
+- Save writes corrected data in the same logical format as the input.
 
 Mapping:
 
 - `Load wdf/txt` loads mapping WDF or stacked TXT.
 - `Avg./Norm.` uses an aligned table preview.
+- Save file can include/exclude averaged and normalised columns.
+- Save file uses `cm\+(-1)` and third-row `Sequence N` labels for Origin compatibility.
 - `Raw data` honors preview stride and legend behavior.
 - Selected spectra preserve original sequence/column labels.
 - `Load to Insitu Echem` transfers in memory.
@@ -73,12 +77,16 @@ Insitu EChem:
 - `#Sequence` input disables Time mode.
 - Sequence labels are preserved.
 - Peak-window edits update previews.
+- Figure legend checkboxes independently show/hide Spectrum, Peak Position, Peak Intensity, and Peak Ratio legends.
+- Save Plot/Data buttons are arranged as Save Spectra / Save Peak Position and Save Peak Intensity / Save Peak Ratios.
+- Figure titles use title case with small connector words such as `to`, `vs`, `and`, and `with` kept lower-case unless an acronym, unit, or scientific notation requires otherwise.
 
 Electrical:
 
 - `Load csv` switches to the `Vg/Vd` preview tab.
 - The shared Raw preview seconds control adjusts all four raw plots.
 - V_Gate/V_Drain first-second controls update the dual-axis preview.
+- V_Gate/I_Drain uses the shared Raw preview seconds control, raw linewidth scaling, mA drain current, and red gate-pulse spans.
 - Tables use `-` for not-applicable pulse fields.
 - Raw plot linewidth decreases as preview seconds increase.
 
@@ -95,4 +103,7 @@ Never restore active hardware output, measured voltage, runtime log text, live p
 ## Hardware Checks
 
 Only perform hardware checks after explicit confirmation. See [Hardware safety](hardware-safety.md).
+
+
+
 

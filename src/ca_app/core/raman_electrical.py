@@ -39,9 +39,11 @@ class RamanElectricalError(ValueError):
 class VoltageTraceInfo:
     status: str
     const_value_v: float | None
+    pulse_value_v: float | None
     n_pulse: int | None
     t_initial_s: float | None
     t_duration_s: float | None
+    pulse_spans_s: tuple[tuple[float, float], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -133,7 +135,7 @@ def classify_voltage_trace(
     sampling_rate_hz: float = SAMPLING_RATE_HZ,
 ) -> VoltageTraceInfo:
     if time_values is None or voltage_values is None:
-        return VoltageTraceInfo("missing", None, None, None, None)
+        return VoltageTraceInfo("missing", None, None, None, None, None)
 
     t = np.asarray(time_values, dtype=float)
     v = np.asarray(voltage_values, dtype=float)
@@ -141,23 +143,26 @@ def classify_voltage_trace(
     t = t[valid]
     v = v[valid]
     if v.size == 0:
-        return VoltageTraceInfo("missing", None, None, None, None)
+        return VoltageTraceInfo("missing", None, None, None, None, None)
 
     v_range = float(np.max(v) - np.min(v))
     if v_range <= const_tol:
-        return VoltageTraceInfo("const", float(np.median(v)), None, None, None)
+        return VoltageTraceInfo("const", float(np.median(v)), None, None, None, None)
 
     baseline = most_common_voltage_level(v, decimals=5)
     active_threshold = max(float(const_tol), 0.2 * v_range)
     active = np.abs(v - baseline) > active_threshold
     segments = [(start, end) for start, end in find_true_segments(active) if (end - start) >= 2]
     if not segments:
-        return VoltageTraceInfo("changing", None, 0, None, None)
+        return VoltageTraceInfo("changing", None, None, 0, None, None)
 
     dt = float(np.nanmedian(np.diff(t))) if t.size > 1 else 1.0 / float(sampling_rate_hz)
     starts = [float(t[start]) for start, _ in segments]
     durations = [float(t[end - 1] - t[start] + dt) for start, end in segments]
-    return VoltageTraceInfo("pulse", None, len(segments), starts[0], float(np.median(durations)))
+    spans = tuple((float(t[start]), float(t[end - 1] + dt)) for start, end in segments)
+    pulse_values = np.concatenate([v[start:end] for start, end in segments])
+    pulse_value = float(np.nanmedian(pulse_values)) if pulse_values.size else None
+    return VoltageTraceInfo("pulse", None, pulse_value, len(segments), starts[0], float(np.median(durations)), spans)
 
 
 def summarize_electrical_data(data: RamanElectricalData) -> RamanElectricalSummary:
@@ -180,6 +185,14 @@ def format_summary_value(value: float | int | None) -> str:
     return f"{numeric:.6g}"
 
 
+def voltage_summary_value(info: VoltageTraceInfo) -> float | None:
+    if info.status == "const":
+        return info.const_value_v
+    if info.status == "pulse":
+        return info.pulse_value_v
+    return None
+
+
 def summary_table_rows(summary: RamanElectricalSummary) -> list[list[str]]:
     return [
         ["n_rows", str(summary.data.n_rows)],
@@ -187,7 +200,7 @@ def summary_table_rows(summary: RamanElectricalSummary) -> list[list[str]]:
         [
             "V_Gate",
             summary.vg.status,
-            format_summary_value(summary.vg.const_value_v),
+            format_summary_value(voltage_summary_value(summary.vg)),
             format_summary_value(summary.vg.n_pulse),
             format_summary_value(summary.vg.t_initial_s),
             format_summary_value(summary.vg.t_duration_s),
@@ -195,7 +208,7 @@ def summary_table_rows(summary: RamanElectricalSummary) -> list[list[str]]:
         [
             "V_Drain",
             summary.vd.status,
-            format_summary_value(summary.vd.const_value_v),
+            format_summary_value(voltage_summary_value(summary.vd)),
             format_summary_value(summary.vd.n_pulse),
             format_summary_value(summary.vd.t_initial_s),
             format_summary_value(summary.vd.t_duration_s),

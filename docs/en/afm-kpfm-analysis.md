@@ -1,4 +1,4 @@
-# AFM/KPFM Analysis
+﻿# AFM/KPFM Analysis
 
 AFM/KPFM image analysis is split between GUI controls in `afm_analysis_panel.py` and core image functions in `core/afm_kpfm_analysis.py`.
 
@@ -24,4 +24,7 @@ The panel supports image previews, histograms, masked histograms, row profiles, 
 ## Core Responsibilities
 
 Core functions handle loading, mask construction, row ordering, histograms, Gaussian fitting, region validation, and CPD-to-energy conversion. GUI code should not duplicate these calculations.
+
+
+
 

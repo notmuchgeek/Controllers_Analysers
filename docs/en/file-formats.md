@@ -1,6 +1,6 @@
-# File Formats
+﻿# File Formats
 
-Version: `v16.11.260607.0040`
+Version: `v16.17.260608.0011`
 
 This document lists the user-facing file formats expected by the application.
 
@@ -14,9 +14,9 @@ Current_mA,Intensity_mW
 
 The loader also accepts two numeric columns where column 1 is current in mA and column 2 is intensity in mW.
 
-## Raman Baseline TXT
+## Raman Baseline TXT/WDF
 
-Two numeric columns:
+Single-spectrum TXT files may use two numeric columns:
 
 ```text
 #Wave    #Intensity
@@ -25,7 +25,9 @@ Two numeric columns:
 
 The loader uses the first two numeric columns as Raman shift and intensity.
 
-Saved corrected output is also two-column text.
+Baseline also accepts multi-spectrum TXT using `#Time/#Wave/#Intensity`, `#Sequence/#Wave/#Intensity`, or Origin-style wide data where the first numeric column is wavenumber and remaining numeric columns are spectra. Single-spectrum and multi-spectrum WDF files are supported when `renishawWiRE` is installed.
+
+Saved corrected output follows the loaded logical input format: two-column TXT, `#Time/#Wave/#Intensity`, `#Sequence/#Wave/#Intensity`, or Origin-style wide TXT.
 
 ## Raman Mapping TXT
 
@@ -41,6 +43,8 @@ The loader unpacks stacked spectra into a wide table with:
 - One column per spectrum.
 - Averaged intensity.
 - Normalised intensity.
+
+Mapping Save file exports Origin-friendly TXT with repeated `Intensity` long names, `cm\+(-1)` as the wavenumber unit, `Sequence N` labels in the third header row, and optional averaged/normalised columns.
 
 ## Raman Mapping WDF
 
@@ -103,4 +107,7 @@ Export behavior is intentionally explicit:
 - AFM/KPFM `Save Keithley CSV` exports measured run data only when clicked.
 - Raman analysis buttons save their corresponding PNG and CSV/TXT outputs.
 - Sequence completion must not auto-create run-data files.
+
+
+
 

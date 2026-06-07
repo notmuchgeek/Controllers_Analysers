@@ -1,4 +1,4 @@
-"""Main application frame for Controllers & Analysers."""
+﻿"""Main application frame for Controllers & Analysers."""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ from ca_app.runtime.usage_logger import USAGE_LOG_DIRNAME, UsageLogger
 
 WORKSPACE_NAMES = ("AFM/KPFM", "APS", "TPC", "Raman")
 DEFAULT_WORKSPACE = "AFM/KPFM"
-APP_VERSION = "v16.11.260607.0040"
+APP_VERSION = "v16.17.260608.0011"
 APP_TITLE = f"Controller & Analysers {APP_VERSION}"
 STATE_FILENAME = "app_state.json"
 RESTORE_VIEW = "view"
@@ -373,9 +373,11 @@ class CaAppFrame(wx.Frame):
         folder = wx.StandardPaths.Get().GetUserLocalDataDir()
         return Path(folder) / STATE_FILENAME
 
+    def software_root_path(self):
+        return Path(__file__).resolve().parents[3]
+
     def usage_log_dir_path(self):
-        folder = wx.StandardPaths.Get().GetUserLocalDataDir()
-        return Path(folder) / USAGE_LOG_DIRNAME
+        return self.software_root_path() / USAGE_LOG_DIRNAME
 
     def load_app_state(self):
         return load_app_state(self.state_file_path())
@@ -637,17 +639,19 @@ class CaAppFrame(wx.Frame):
             "  - Red/green laser-diode selection and current-limit enforcement\n"
             "  - Keithley current-source ON/OFF control with readback\n\n"
             "Raman Baseline\n"
-            "  - TXT loading with asPLS, drPLS, and Polynomial/backcor baseline fitting\n"
+            "  - TXT/WDF loading with asPLS, drPLS, and Polynomial/backcor baseline fitting\n"
             "  - Optional WiRE analysed result overlay and corrected TXT export\n\n"
             "Raman Mapping\n"
             "  - WDF/TXT loading, mapping unstacking, Avg./Norm. table preview, and raw/location/selected plots\n"
             "  - Origin TXT export, selected-sequence TXT export, and in-memory transfer to Insitu EChem\n\n"
             "Raman Insitu EChem\n"
             "  - TXT/WDF sequence loading with sequence/time x-axis previews\n"
-            "  - Peak position, intensity, and normalized-ratio analysis with PNG/CSV export\n\n"
+            "  - Peak position, intensity, normal/inverse ratios, independent legends, and PNG/CSV export\n\n"
             "Raman Electrical\n"
             "  - Electrical CSV loading for V_Gate, V_Drain, I_Gate, and I_Drain previews\n"
-            "  - V_Gate/V_Drain pulse classification and summary table"
+            "  - V_Gate/V_Drain preview, I_Drain pulse-span preview in mA, and pulse summary table\n\n"
+            "Usage Logging\n"
+            "  - Best-effort local usage logs stored in the software folder under usage_logs"
         )
         wx.MessageBox(message, "Versions", wx.OK | wx.ICON_INFORMATION, self)
 
@@ -690,3 +694,6 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+

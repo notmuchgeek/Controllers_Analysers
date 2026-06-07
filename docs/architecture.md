@@ -1,6 +1,6 @@
-# Architecture
+﻿# Architecture
 
-Version: `v16.11.260607.0040`
+Version: `v16.17.260608.0011`
 
 This file is retained as a compatibility entry point for older links.
 
@@ -19,4 +19,7 @@ The active architecture summary is:
 - `src/ca_app/runtime/` and `src/ca_app/io/` are planned extraction areas.
 
 Raman Electrical is implemented in the Raman workspace; it is not a reserved blank tab.
+
+
+
 

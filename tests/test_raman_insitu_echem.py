@@ -17,6 +17,7 @@ except ImportError:
     RamanAnalysisPanel = None
     RamanInsituEchemPanel = None
 
+from ca_app.core.raman_baseline import RamanSpectrum
 from ca_app.core.raman_insitu_echem import (
     PeakWindow,
     RamanInsituError,
@@ -79,6 +80,9 @@ class RamanInsituEchemCoreTests(unittest.TestCase):
         self.assertIn("ratio_1371_to_1423", ratio_data[0])
         self.assertIn("ratio_1423_to_1423", ratio_data[0])
         np.testing.assert_allclose([row["ratio_1423_to_1423"] for row in ratio_data], [1, 1, 1])
+        inverse_ratio_data = ratio_rows(result, inverse=True)
+        self.assertIn("ratio_1423_to_1371", inverse_ratio_data[0])
+        np.testing.assert_allclose([row["ratio_1423_to_1371"] for row in inverse_ratio_data], [2, 2, 2])
 
     def test_build_intensity_ratios_rejects_empty_series(self):
         with self.assertRaises(RamanInsituError):
@@ -220,11 +224,34 @@ class RamanInsituEchemGuiTests(unittest.TestCase):
             data = RamanInsituEchemCoreTests.synthetic_data()
             panel.data = data
             panel.result = analyze_insitu_sequence(data, [PeakWindow(1371, 3), PeakWindow(1423, 3)], 1423)
+            panel.cb_peak_position_legend.SetValue(False)
+            panel.cb_peak_intensity_legend.SetValue(False)
+            panel.cb_peak_ratio_legend.SetValue(False)
 
             panel.draw_insitu_previews()
 
             self.assertGreaterEqual(len(panel.figure_windows.axes), 1)
             self.assertEqual(len(panel.figure_analysis.axes), 4)
+            window_legend = panel.figure_windows.axes[0].get_legend()
+            self.assertIsNotNone(window_legend)
+            window_labels = [text.get_text() for text in window_legend.get_texts()]
+            self.assertIn("1371 cm$^{-1}$", window_labels)
+            self.assertTrue(all("+/-" not in label for label in window_labels))
+            self.assertEqual(panel.figure_windows.axes[0].get_title(), "Every 20-th Spectrum with Target Peak Windows")
+            self.assertEqual(panel.figure_analysis.axes[1].get_title(), "Peak Position vs Sequence")
+            self.assertEqual(panel.figure_analysis.axes[2].get_title(), "Peak Intensity vs Sequence")
+
+            ratio_ax = panel.figure_analysis.axes[3]
+            self.assertEqual(len(ratio_ax.lines), 2)
+            self.assertEqual(len(ratio_ax.lines[-1].get_xdata()), 0)
+            self.assertIsNone(panel.figure_analysis.axes[1].get_legend())
+            self.assertIsNone(panel.figure_analysis.axes[2].get_legend())
+            self.assertIsNone(ratio_ax.get_legend())
+
+            panel.cb_peak_ratio_legend.SetValue(True)
+            panel.draw_insitu_previews()
+            ratio_labels = [text.get_text() for text in panel.figure_analysis.axes[3].get_legend().get_texts()]
+            self.assertIn("1423 cm$^{-1}$ = 1", ratio_labels)
         finally:
             frame.Destroy()
 
@@ -237,16 +264,47 @@ class RamanInsituEchemGuiTests(unittest.TestCase):
                 [panel.notebook.GetPageText(index) for index in range(panel.notebook.GetPageCount())],
                 ["Baseline", "Mapping", "Insitu EChem", "Electrical"],
             )
-            self.assertEqual(panel.substrate_page.btn_load_raw.GetLabel(), "Load txt")
+            self.assertEqual(panel.substrate_page.btn_load_raw.GetLabel(), "Load txt/wdf")
             self.assertEqual(panel.substrate_page.btn_load_wire.GetLabel(), "Load fitted")
+            self.assertEqual(panel.substrate_page.btn_update_baseline_preview.GetLabel(), "Update")
             self.assertIsInstance(panel.substrate_page.lbl_raw, wx.TextCtrl)
             self.assertIsInstance(panel.substrate_page.lbl_wire, wx.TextCtrl)
             self.assertTrue(panel.substrate_page.lbl_raw.GetWindowStyleFlag() & wx.TE_READONLY)
             self.assertTrue(panel.substrate_page.lbl_wire.GetWindowStyleFlag() & wx.TE_READONLY)
             self.assertEqual(panel.substrate_page.lbl_wire.GetValue(), "No fitted result loaded")
             self.assertEqual(panel.insitu_page.btn_load_insitu.GetLabel(), "Load wdf/txt")
+            self.assertEqual(panel.insitu_page.btn_update_preview.GetLabel(), "Update Figure")
+            self.assertEqual(panel.insitu_page.cb_spectrum_legend.GetLabel(), "Spectrum")
+            self.assertEqual(panel.insitu_page.cb_peak_position_legend.GetLabel(), "Peak Position")
+            self.assertEqual(panel.insitu_page.cb_peak_intensity_legend.GetLabel(), "Peak Intensity")
+            self.assertEqual(panel.insitu_page.cb_peak_ratio_legend.GetLabel(), "Peak Ratio")
+            self.assertEqual(panel.insitu_page.btn_save_spectra.GetLabel(), "Save Spectra")
+            self.assertEqual(panel.insitu_page.btn_save_positions.GetLabel(), "Save Peak Position")
+            self.assertEqual(panel.insitu_page.btn_save_intensities.GetLabel(), "Save Peak Intensity")
+            self.assertEqual(panel.insitu_page.btn_save_ratios.GetLabel(), "Save Peak Ratios")
         finally:
             frame.Destroy()
+
+    def test_baseline_selected_columns_enable_for_multi_spectrum_input(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "sequence.txt"
+            rows = ["#Sequence\t#Wave\t#Intensity"]
+            for seq in [1, 2]:
+                for wave in [100, 99, 98, 97, 96, 95]:
+                    rows.append(f"{seq}\t{wave}\t{seq * wave}")
+            path.write_text("\n".join(rows), encoding="utf-8")
+            frame = wx.Frame(None)
+            try:
+                panel = RamanAnalysisPanel(frame).substrate_page
+
+                panel.raw_input = __import__("ca_app.core.raman_baseline", fromlist=["read_raman_baseline_input"]).read_raman_baseline_input(path)
+                panel.raw_spectrum = panel.raw_input.spectra[0]
+                panel.update_preview_selection_controls()
+
+                self.assertTrue(panel.tc_baseline_selected.IsEnabled())
+                self.assertTrue(panel.btn_update_baseline_preview.IsEnabled())
+            finally:
+                frame.Destroy()
 
     def test_mapping_preview_tabs_and_every_n_legend_behavior(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -268,8 +326,14 @@ class RamanInsituEchemGuiTests(unittest.TestCase):
                 )
                 self.assertEqual(mapping.grid_raw_preview.GetColLabelValue(0), "Wavenumber")
                 self.assertEqual(mapping.grid_avg_preview.GetColLabelValue(1), "Averaged Intensity")
-                self.assertFalse(mapping.cb_raw_legend.IsEnabled())
+                self.assertTrue(mapping.cb_raw_legend.IsEnabled())
                 self.assertEqual(len(mapping.figure_raw.axes[0].lines), 4)
+                self.assertLess(*mapping.figure_raw.axes[0].get_xlim())
+                self.assertLess(*mapping.figure_selected.axes[0].get_xlim())
+
+                mapping.cb_raw_legend.SetValue(True)
+                mapping.update_previews()
+                self.assertIsNotNone(mapping.figure_raw.axes[0].get_legend())
 
                 mapping.tc_preview_every_n.SetValue("2")
                 mapping.cb_raw_legend.SetValue(True)
@@ -278,6 +342,36 @@ class RamanInsituEchemGuiTests(unittest.TestCase):
                 self.assertTrue(mapping.cb_raw_legend.IsEnabled())
                 self.assertEqual(len(mapping.figure_raw.axes[0].lines), 2)
                 self.assertIsNotNone(mapping.figure_raw.axes[0].get_legend())
+            finally:
+                frame.Destroy()
+
+    def test_raman_spectrum_preview_axes_are_low_to_high(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            sequence_path = Path(tmp) / "sequence_desc.txt"
+            rows = [["#Time", "#Wave", "#Intensity"]]
+            for seq_code, scale in [(0, 1.0), (2, 1.2)]:
+                for wave in [1423, 1420, 1374, 1371, 1368]:
+                    rows.append([str(seq_code), str(wave), f"{scale * wave:.6g}"])
+            sequence_path.write_text("\n".join("\t".join(row) for row in rows), encoding="utf-8")
+
+            frame = wx.Frame(None)
+            try:
+                panel = RamanAnalysisPanel(frame)
+
+                panel.substrate_page.raw_spectrum = RamanSpectrum(
+                    raman_shift=np.asarray([1800.0, 1600.0, 1400.0]),
+                    intensity=np.asarray([1.0, 2.0, 3.0]),
+                    name="descending.txt",
+                )
+                panel.substrate_page.draw_loaded_raw()
+                self.assertLess(*panel.substrate_page.figure_preview.axes[0].get_xlim())
+
+                insitu = panel.insitu_page
+                insitu.raw_path = str(sequence_path)
+                insitu.set_loaded_file_display(sequence_path)
+                insitu.reload_data_and_update()
+                self.assertLess(*insitu.figure_windows.axes[0].get_xlim())
+                self.assertLess(*insitu.figure_analysis.axes[0].get_xlim())
             finally:
                 frame.Destroy()
 
@@ -297,7 +391,7 @@ class RamanInsituEchemGuiTests(unittest.TestCase):
                         electrical.electrical_notebook.GetPageText(index)
                         for index in range(electrical.electrical_notebook.GetPageCount())
                     ],
-                    ["Raw data", "V_Gate/V_Drain"],
+                    ["Raw data", "V_Gate/V_Drain", "V_Gate/I_Drain"],
                 )
                 self.assertEqual(electrical.electrical_notebook.GetSelection(), 1)
                 self.assertEqual(len(electrical.figure_electrical_raw.axes), 4)
@@ -312,9 +406,14 @@ class RamanInsituEchemGuiTests(unittest.TestCase):
                         for line in ax.lines
                     )
                 )
+                self.assertEqual(electrical.figure_electrical_raw.axes[3].get_ylabel(), r"$I_{Drain}$ / mA")
                 self.assertGreaterEqual(len(electrical.figure_vgvd.axes), 2)
+                self.assertEqual(len(electrical.figure_vgid.axes), 1)
+                self.assertEqual(electrical.figure_vgid.axes[0].get_ylabel(), r"$I_{Drain}$ / mA")
+                self.assertGreater(len(electrical.figure_vgid.axes[0].patches), 0)
                 self.assertEqual(electrical.grid_summary.GetCellValue(0, 0), "n_rows")
                 self.assertEqual(electrical.grid_summary.GetCellValue(2, 0), "V_Gate")
+                self.assertEqual(electrical.grid_summary.GetCellValue(2, 2), "5")
                 self.assertEqual(electrical.grid_summary.GetCellValue(3, 0), "V_Drain")
                 self.assertEqual(electrical.tc_raw_preview_s.GetValue(), "1")
                 self.assertEqual(electrical.lbl_raw_preview_range.GetLabel(), "first 1.0 s")
@@ -334,12 +433,15 @@ class RamanInsituEchemGuiTests(unittest.TestCase):
                 electrical.tc_raw_preview_s.SetValue("1.0")
                 electrical.update_previews()
                 short_width = electrical.figure_electrical_raw.axes[0].lines[0].get_linewidth()
+                short_vgid_width = electrical.figure_vgid.axes[0].lines[0].get_linewidth()
 
                 electrical.tc_raw_preview_s.SetValue("100.0")
                 electrical.update_previews()
                 long_width = electrical.figure_electrical_raw.axes[0].lines[0].get_linewidth()
+                long_vgid_width = electrical.figure_vgid.axes[0].lines[0].get_linewidth()
 
                 self.assertGreater(short_width, long_width)
+                self.assertGreater(short_vgid_width, long_vgid_width)
                 self.assertLessEqual(short_width, electrical.RAW_TRACE_LINEWIDTH_MAX)
                 self.assertGreaterEqual(long_width, electrical.RAW_TRACE_LINEWIDTH_MIN)
                 self.assertEqual(electrical.figure_vgvd.axes[0].lines[0].get_linewidth(), 1.5)
@@ -389,6 +491,11 @@ class RamanInsituEchemGuiTests(unittest.TestCase):
                     xdata = ax.lines[0].get_xdata()
                     self.assertEqual(len(xdata), 6)
                     self.assertLessEqual(float(max(xdata)), 0.5)
+                for ax in electrical.figure_vgid.axes:
+                    self.assertEqual(len(ax.lines), 1)
+                    xdata = ax.lines[0].get_xdata()
+                    self.assertEqual(len(xdata), 6)
+                    self.assertLessEqual(float(max(xdata)), 0.5)
             finally:
                 frame.Destroy()
 
@@ -429,7 +536,8 @@ class RamanInsituEchemGuiTests(unittest.TestCase):
         rows = []
         for index in range(row_count):
             time_s = index * dt_s
-            rows.append([time_s, 1.0 if index < 5 else 2.0, 1e-9, time_s, 0.01, 2e-9])
+            gate_voltage = 5.0 if 3 <= index <= 5 else 0.0
+            rows.append([time_s, gate_voltage, 1e-9, time_s, 0.01, 2e-9])
         path.write_text(
             "\n".join([",".join(headers)] + [",".join(f"{value:.12g}" for value in row) for row in rows]),
             encoding="utf-8",
@@ -564,6 +672,11 @@ class RamanInsituEchemGuiTests(unittest.TestCase):
             panel.tc_raman_range_max.SetValue("1660")
             panel.tc_window_every_n.SetValue("7")
             panel.tc_result_every_n.SetValue("9")
+            panel.cb_inverse_ratio.SetValue(True)
+            panel.cb_spectrum_legend.SetValue(False)
+            panel.cb_peak_position_legend.SetValue(False)
+            panel.cb_peak_intensity_legend.SetValue(True)
+            panel.cb_peak_ratio_legend.SetValue(False)
             panel.clear_peak_window_rows()
             panel.add_peak_window_row("1371", "4")
             panel.add_peak_window_row("1606", "8")
@@ -582,6 +695,11 @@ class RamanInsituEchemGuiTests(unittest.TestCase):
             self.assertEqual(params["window_preview_every_n"], "7")
             self.assertEqual(params["result_spectra_every_n"], "9")
             self.assertEqual(params["normalized_peak_cm1"], "1606")
+            self.assertTrue(params["inverse_ratio"])
+            self.assertFalse(params["show_analysis_legend"])
+            self.assertFalse(params["show_peak_position_legend"])
+            self.assertTrue(params["show_peak_intensity_legend"])
+            self.assertFalse(params["show_peak_ratio_legend"])
             self.assertEqual(len(params["peak_windows"]), 2)
             self.assertTrue(target.rb_time.GetValue())
             self.assertEqual(target.tc_time_offset.GetValue(), "12.5")
@@ -592,6 +710,11 @@ class RamanInsituEchemGuiTests(unittest.TestCase):
             self.assertEqual(target.tc_result_every_n.GetValue(), "9")
             self.assertEqual(len(target.window_rows), 2)
             self.assertEqual(target.choice_normalized_peak.GetStringSelection(), "1606")
+            self.assertTrue(target.cb_inverse_ratio.GetValue())
+            self.assertFalse(target.cb_spectrum_legend.GetValue())
+            self.assertFalse(target.cb_peak_position_legend.GetValue())
+            self.assertTrue(target.cb_peak_intensity_legend.GetValue())
+            self.assertFalse(target.cb_peak_ratio_legend.GetValue())
         finally:
             frame.Destroy()
             target_frame.Destroy()

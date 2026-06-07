@@ -1,4 +1,4 @@
-# Workspace Guide
+﻿# Workspace Guide
 
 The GUI uses a consistent fixed left/right layout. Left panels contain controls and save/load actions. Right panels contain preview notebooks and logs.
 
@@ -27,5 +27,7 @@ The Raman workspace contains four tabs:
 - `Baseline`: substrate-baseline correction for Raman TXT files.
 - `Mapping`: WDF/TXT mapping import, unstacking, table preview, selected spectra, and transfer to Insitu EChem.
 - `Insitu EChem`: sequence peak-window analysis and normalized ratios.
-- `Electrical`: electrical CSV preview and V_Gate/V_Drain classification.
+- `Electrical`: electrical CSV preview, V_Gate/V_Drain classification, and V_Gate/I_Drain drain-current preview with gate-pulse spans.
+
+
 

@@ -125,6 +125,17 @@ class AppStateGuiTests(unittest.TestCase):
             finally:
                 frame.Destroy()
 
+    def test_usage_logs_are_stored_under_software_root(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            frame = self.make_frame(Path(tmp) / "app_state.json")
+            try:
+                usage_dir = frame.usage_log_dir_path()
+
+                self.assertEqual(usage_dir.name, "usage_logs")
+                self.assertTrue((usage_dir.parent / "run_ca_app.py").exists())
+            finally:
+                frame.Destroy()
+
     def test_versions_and_about_use_current_version_text(self):
         with tempfile.TemporaryDirectory() as tmp:
             frame = self.make_frame(Path(tmp) / "app_state.json")
@@ -177,7 +188,7 @@ class AppStateGuiTests(unittest.TestCase):
                 raman = frame.workspace_panels["Raman"]
                 electrical_state = [
                     {"selection": 3, "pages": ["Baseline", "Mapping", "Insitu EChem", "Electrical"]},
-                    {"selection": 1, "pages": ["Raw data", "V_Gate/V_Drain"]},
+                    {"selection": 1, "pages": ["Raw data", "V_Gate/V_Drain", "V_Gate/I_Drain"]},
                 ]
 
                 frame.apply_panel_tab_state(raman, electrical_state)

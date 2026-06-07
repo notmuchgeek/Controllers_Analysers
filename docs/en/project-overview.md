@@ -1,4 +1,4 @@
-# Project Overview
+﻿# Project Overview
 
 Controllers & Analysers is a Windows-first wxPython desktop application for laboratory experiment control and data analysis. It combines Keithley-based AFM/KPFM light-bias control, CPD image analysis, APS/DWF/SPV analysis, TPC laser-diode control, Raman baseline correction, Raman Mapping, Raman Insitu EChem analysis, and Raman Electrical CSV preview/classification.
 
@@ -6,7 +6,7 @@ The project is research software. The goal is not to hide scientific workflow de
 
 ## Current Version
 
-Current project version: `v16.11.260607.0040`.
+Current project version: `v16.17.260608.0011`.
 
 The v16 line is a larger documentation and workflow consolidation release. The application title, About/Versions dialogs, package metadata, and documentation must all use the same version.
 
@@ -30,5 +30,8 @@ The v16 line is a larger documentation and workflow consolidation release. The a
 - Fixed left-control/right-preview GUI layout.
 - Tests for core logic and state behavior.
 - Clear boundaries between GUI, core analysis, hardware, IO, and planned runtime services.
+
+
+
 
 

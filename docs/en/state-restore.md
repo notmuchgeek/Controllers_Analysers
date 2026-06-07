@@ -1,4 +1,4 @@
-# State Restore
+﻿# State Restore
 
 Automatic restore is controlled by the top-level `Restore` menu. It is separate from manual `Save Parameters` and `Load Parameters` files.
 
@@ -31,6 +31,9 @@ When a panel reloads a file during restore, it must reapply typed fields after t
 
 ## Usage Logs
 
-Usage logs are separate from restore state. The `usage_logging_enabled` setting is saved with app state so the About-menu toggle survives restart, but the logs themselves live in the sibling `usage_logs/` folder and do not drive any restore behavior.
+Usage logs are separate from restore state. The `usage_logging_enabled` setting is saved with app state so the About-menu toggle survives restart, but the logs themselves live in the software folder's `usage_logs/` folder next to `run_ca_app.py` and do not drive any restore behavior.
 
 Do not store active hardware state or raw analysis data in usage logs.
+
+
+

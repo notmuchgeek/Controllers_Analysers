@@ -1,4 +1,4 @@
-# TPC Control
+﻿# TPC Control
 
 TPC laser-diode control is a hardware workspace for red/green laser diode current through a Keithley source meter.
 
@@ -22,4 +22,7 @@ The TPC panel keeps COM port and baudrate editable. Red is the safe default if n
 ## Safety
 
 TPC hardware changes require the same caution as AFM/KPFM hardware changes. Do not broaden automatic output-on behavior. Loading parameters must not turn output on.
+
+
+
 

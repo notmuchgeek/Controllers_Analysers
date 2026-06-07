@@ -17,9 +17,12 @@ from ca_app.core.raman_baseline import (
     RamanBaselineSettings,
     default_output_name,
     fit_raman_baseline,
+    fit_raman_baseline_input,
     interpolate_to_reference_x,
     parse_numeric_list,
+    read_raman_baseline_input,
     read_raman_txt,
+    save_corrected_baseline_input,
     save_corrected_txt,
 )
 
@@ -167,8 +170,74 @@ class RamanBaselineCoreTests(unittest.TestCase):
 
             text = path.read_text(encoding="utf-8")
             self.assertIn("#Wave", text)
-            self.assertIn("#Intensity", text)
-            self.assertGreater(len(text.splitlines()), 5)
+        self.assertIn("#Intensity", text)
+        self.assertGreater(len(text.splitlines()), 5)
+
+    def test_baseline_input_reads_time_sequence_and_saves_matching_format(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "time_sequence.txt"
+            rows = ["#Time\t#Wave\t#Intensity"]
+            for time_code, scale in [(0, 1.0), (2, 1.2)]:
+                for wave in [100, 99, 98, 97, 96, 95]:
+                    rows.append(f"{time_code}\t{wave}\t{scale * (1000 + wave)}")
+            path.write_text("\n".join(rows), encoding="utf-8")
+
+            source = read_raman_baseline_input(path)
+            result = fit_raman_baseline_input(
+                source,
+                RamanBaselineSettings(method=METHOD_ASPLS, auto=False, lambda_value=1e3, secondary_value=1.0),
+            )
+            saved = save_corrected_baseline_input(result, Path(tmp) / "corrected.txt")
+
+            text = saved.read_text(encoding="utf-8")
+
+        self.assertEqual(source.input_format, "time")
+        self.assertEqual(source.n_spectra, 2)
+        self.assertTrue(text.startswith("#Time\t\t#Wave\t\t#Intensity\n"))
+        self.assertIn("0.000000\t100.000000", text)
+
+    def test_baseline_input_reads_sequence_and_origin_wide_formats(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            sequence_path = Path(tmp) / "sequence.txt"
+            sequence_path.write_text(
+                "\n".join(
+                    ["#Sequence\t#Wave\t#Intensity"]
+                    + [f"{seq}\t{wave}\t{seq * wave}" for seq in [1, 2] for wave in [100, 99, 98, 97, 96, 95]]
+                ),
+                encoding="utf-8",
+            )
+            wide_path = Path(tmp) / "origin.txt"
+            wide_path.write_text(
+                "\n".join(
+                    [
+                        "Wavenumber\tIntensity\tIntensity",
+                        "cm\\+(-1)\ta.u.\ta.u.",
+                        "\tSequence 1\tSequence 2",
+                        "100\t10\t20",
+                        "99\t11\t21",
+                        "98\t12\t22",
+                        "97\t13\t23",
+                        "96\t14\t24",
+                        "95\t15\t25",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+
+            sequence_source = read_raman_baseline_input(sequence_path)
+            wide_source = read_raman_baseline_input(wide_path)
+            wide_result = fit_raman_baseline_input(
+                wide_source,
+                RamanBaselineSettings(method=METHOD_ASPLS, auto=False, lambda_value=1e3, secondary_value=1.0),
+            )
+            saved = save_corrected_baseline_input(wide_result, Path(tmp) / "wide_corrected.txt")
+            saved_text = saved.read_text(encoding="utf-8")
+
+        self.assertEqual(sequence_source.input_format, "sequence")
+        self.assertEqual(sequence_source.n_spectra, 2)
+        self.assertEqual(wide_source.input_format, "wide")
+        self.assertEqual(wide_source.n_spectra, 2)
+        self.assertIn("Wavenumber\tIntensity\tIntensity", saved_text)
 
     def test_interpolate_to_reference_x_handles_decreasing_source_order(self):
         source_x = np.array([3.0, 2.0, 1.0])

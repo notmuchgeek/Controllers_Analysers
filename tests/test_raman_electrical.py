@@ -60,7 +60,14 @@ class RamanElectricalCoreTests(unittest.TestCase):
             self.assertEqual(summary.vg.n_pulse, 1)
             self.assertAlmostEqual(summary.vg.t_initial_s, 0.03)
             self.assertAlmostEqual(summary.vg.t_duration_s, 0.03)
+            self.assertAlmostEqual(summary.vg.pulse_value_v, 5.0)
+            self.assertEqual(len(summary.vg.pulse_spans_s), 1)
+            self.assertAlmostEqual(summary.vg.pulse_spans_s[0][0], 0.03)
+            self.assertAlmostEqual(summary.vg.pulse_spans_s[0][1], 0.06)
             self.assertEqual(summary.vd.status, "const")
+
+            rows = summary_table_rows(summary)
+            self.assertEqual(rows[2][2], "5")
 
     def test_missing_exact_columns_are_reported_and_summary_uses_dash(self):
         with tempfile.TemporaryDirectory() as tmp:

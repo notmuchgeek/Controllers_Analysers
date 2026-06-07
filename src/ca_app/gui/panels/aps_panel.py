@@ -637,13 +637,13 @@ class ApsAnalysisPanel(wx.Panel):
                     self.plot_aps_fit(ax_aps, ref_aps)
                 except Exception as exc:
                     ax_aps.text(0.02, 0.92, f"Preview fit warning: {exc}", transform=ax_aps.transAxes, fontsize=8)
-            ax_sample_dwf.set_title("Sample DWF/CPD preview")
+            ax_sample_dwf.set_title("Sample DWF/CPD Preview")
             ax_sample_dwf.set_xlabel("Time(s)")
             ax_sample_dwf.set_ylabel("CPD (meV)")
-            ax_ref_dwf.set_title("Reference DWF/CPD preview")
+            ax_ref_dwf.set_title("Reference DWF/CPD Preview")
             ax_ref_dwf.set_xlabel("Time(s)")
             ax_ref_dwf.set_ylabel("CPD (meV)")
-            ax_aps.set_title("Reference APS preview")
+            ax_aps.set_title("Reference APS Preview")
             ax_aps.set_xlabel("Energy (eV)")
             ax_aps.set_ylabel("Photoemission$^{1/2}$  (arb.unit)")
             self.apply_aps_axis_style(ax_aps)
@@ -681,7 +681,7 @@ class ApsAnalysisPanel(wx.Panel):
                     except Exception as exc:
                         ax.text(0.02, 0.92, f"Preview fit warning: {exc}", transform=ax.transAxes, fontsize=8)
                         break
-            ax.set_title("APS preview with fitting region")
+            ax.set_title("APS Preview with Fitting Region")
             ax.set_xlabel("Energy (eV)")
             ax.set_ylabel(self.aps_y_label(data[0].sqrt if self.aps_paths else False))
             self.apply_aps_axis_style(ax)
@@ -708,7 +708,7 @@ class ApsAnalysisPanel(wx.Panel):
                 for item in import_spv_files(self.spv_paths, settings):
                     preview_ax.plot(item.time, item.cpd_data, label=item.name)
                     self.shade_spv_light_regions(preview_ax, item)
-            preview_ax.set_title("SPV preview - raw WF data")
+            preview_ax.set_title("SPV Preview - Raw WF Data")
             preview_ax.set_xlabel("Time(s)")
             preview_ax.set_ylabel("WF (mV)")
             self.apply_spv_axis_style(preview_ax)
@@ -727,7 +727,7 @@ class ApsAnalysisPanel(wx.Panel):
         for item in result.data:
             ax.plot(item.time, item.cpd_data, label=f"{item.name}, bg={item.bg_cpd:.3g} meV")
             self.shade_spv_light_regions(ax, item)
-        ax.set_title("SPV results - background corrected")
+        ax.set_title("SPV Results - Background Corrected")
         ax.set_xlabel("Time(s)")
         ax.set_ylabel("SPV (meV)")
         self.apply_spv_axis_style(ax)
@@ -990,7 +990,7 @@ class ApsAnalysisPanel(wx.Panel):
         for item in result.data:
             ax.plot(item.energy, item.pes, label=f"{item.name}, HOMO={item.homo:.3g} +/- {item.std_homo:.2g} eV")
             self.plot_aps_fit(ax, item)
-        ax.set_title("APS analysis results")
+        ax.set_title("APS Analysis Results")
         ax.set_xlabel("Energy (eV)")
         ax.set_ylabel(self.aps_y_label(result.data[0].sqrt))
         self.apply_aps_axis_style(ax)
@@ -1003,7 +1003,7 @@ class ApsAnalysisPanel(wx.Panel):
         for item in result.data:
             ax.plot(item.energy, item.dos_raw, "o-", markerfacecolor="none", markersize=3, linewidth=0.8, label=f"{item.name} no smooth")
             ax.plot(item.energy, item.dos, "*-", markerfacecolor="none", markersize=3, label=f"{item.name} smooth")
-        ax.set_title("DOS results - no smooth and smoothed")
+        ax.set_title("DOS Results - No Smooth and Smoothed")
         ax.set_xlabel("Energy (eV)")
         ax.set_ylabel("DOS (arb. unit)")
         self.apply_aps_axis_style(ax)

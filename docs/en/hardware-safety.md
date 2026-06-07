@@ -1,6 +1,6 @@
-# Hardware Safety
+﻿# Hardware Safety
 
-Version: `v16.11.260607.0040`
+Version: `v16.17.260608.0011`
 
 This application can control laboratory hardware. Treat every hardware change as a safety-sensitive change, even when the visible edit looks like normal GUI cleanup.
 
@@ -95,4 +95,7 @@ Before any hardware check:
 - Confirm the requested output current is safe for the connected sample.
 
 Never run a hardware command just to verify a GUI or documentation change.
+
+
+
 

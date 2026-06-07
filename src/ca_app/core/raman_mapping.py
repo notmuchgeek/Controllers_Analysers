@@ -219,21 +219,37 @@ def build_unstacked_table(dataset: RamanDataset) -> tuple[list[str], list[list[f
     return headers, rows
 
 
-def export_origin_txt(dataset: RamanDataset, output_file: str | Path) -> Path:
+def export_origin_txt(
+    dataset: RamanDataset,
+    output_file: str | Path,
+    include_averaged: bool = True,
+    include_normalised: bool = True,
+) -> Path:
     output_file = Path(output_file)
     output_file.parent.mkdir(parents=True, exist_ok=True)
     headers, rows = build_unstacked_table(dataset)
-    long_names = (
-        ["Wavenumber"]
-        + [f"Intensity {index}" for index in range(1, dataset.n_spectra + 1)]
-        + ["Averaged Intensity", "Normalised Intensity"]
-    )
-    units = ["cm^(-1)"] + ["a.u."] * dataset.n_spectra + ["a.u.", "a.u."]
+    selected_indexes = list(range(1 + dataset.n_spectra))
+    if include_averaged:
+        selected_indexes.append(len(headers) - 2)
+    if include_normalised:
+        selected_indexes.append(len(headers) - 1)
+    long_names = ["Wavenumber"] + ["Intensity"] * dataset.n_spectra
+    units = ["cm\\+(-1)"] + ["a.u."] * dataset.n_spectra
+    comments = [""] + [f"Sequence {index}" for index in range(1, dataset.n_spectra + 1)]
+    if include_averaged:
+        long_names.append("Averaged Intensity")
+        units.append("a.u.")
+        comments.append("Averaged")
+    if include_normalised:
+        long_names.append("Normalised Intensity")
+        units.append("a.u.")
+        comments.append("Normalised")
     with output_file.open("w", encoding="utf-8", newline="") as handle:
         writer = csv.writer(handle, delimiter="\t", lineterminator="\n")
         writer.writerow(long_names)
         writer.writerow(units)
-        writer.writerows([f"{value:.6f}" for value in row] for row in rows)
+        writer.writerow(comments)
+        writer.writerows([f"{row[index]:.6f}" for index in selected_indexes] for row in rows)
     return output_file
 
 

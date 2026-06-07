@@ -1,10 +1,10 @@
-[build-system]
+﻿[build-system]
 requires = ["setuptools>=69", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "ca-app"
-version = "16.11.260607.0040"
+version = "16.17.260608.0011"
 description = "wxPython GUI for experiment control and analysis workflows."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -30,4 +30,7 @@ ca_app = ["resources/*.csv"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
+
+
+
 
