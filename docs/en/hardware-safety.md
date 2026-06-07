@@ -1,6 +1,6 @@
-﻿# Hardware Safety
+# Hardware Safety
 
-Version: `v16.6.260606.2326`
+Version: `v16.11.260607.0040`
 
 This application can control laboratory hardware. Treat every hardware change as a safety-sensitive change, even when the visible edit looks like normal GUI cleanup.
 

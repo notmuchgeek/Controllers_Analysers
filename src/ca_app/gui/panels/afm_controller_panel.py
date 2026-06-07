@@ -218,27 +218,26 @@ class AfmControllerPanel(wx.Panel):
 
     def build_top_settings_notebook(self, parent):
         notebook = wx.Notebook(parent)
-        notebook.SetMinSize((610, 150))
+        notebook.SetMinSize((610, -1))
 
         self.global_settings_panel = wx.Panel(notebook)
         global_sizer = wx.BoxSizer(wx.VERTICAL)
-        global_sizer.Add(self.build_global_settings(self.global_settings_panel), 1, wx.EXPAND | wx.ALL, 4)
+        global_sizer.Add(self.build_global_settings(self.global_settings_panel), 0, wx.EXPAND | wx.ALL, 6)
         self.global_settings_panel.SetSizer(global_sizer)
 
         self.source_quick_panel = wx.Panel(notebook)
         source_quick_sizer = wx.BoxSizer(wx.VERTICAL)
-        source_quick_sizer.Add(self.build_source_mode(self.source_quick_panel), 0, wx.EXPAND | wx.ALL, 4)
-        source_quick_sizer.Add(self.build_quick_test(self.source_quick_panel), 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 4)
+        source_quick_sizer.Add(self.build_quick_test(self.source_quick_panel), 0, wx.EXPAND | wx.ALL, 6)
         self.source_quick_panel.SetSizer(source_quick_sizer)
 
         notebook.AddPage(self.global_settings_panel, "Global settings")
-        notebook.AddPage(self.source_quick_panel, "Source / Quick Test")
+        notebook.AddPage(self.source_quick_panel, "Quick Test")
         return notebook
     def build_global_settings(self, parent):
-        box = wx.StaticBoxSizer(wx.VERTICAL, parent, "Global settings")
-        grid = wx.FlexGridSizer(rows=3, cols=6, vgap=6, hgap=6)
-        grid.AddGrowableCol(1, 1)
-        grid.AddGrowableCol(4, 1)
+        box = wx.BoxSizer(wx.VERTICAL)
+        self.global_settings_grid = wx.FlexGridSizer(rows=3, cols=6, vgap=6, hgap=6)
+        self.global_settings_grid.AddGrowableCol(1, 1)
+        self.global_settings_grid.AddGrowableCol(4, 1)
 
         self.tc_com_port = wx.TextCtrl(parent, value=DEFAULT_COM_PORT)
         self.choice_baudrate = wx.Choice(parent, choices=list(BAUDRATE_CHOICES))
@@ -248,7 +247,7 @@ class AfmControllerPanel(wx.Panel):
         self.tc_measured_voltage = wx.TextCtrl(parent, style=wx.TE_READONLY)
 
         self.add_labeled_pair_row(
-            grid,
+            self.global_settings_grid,
             parent,
             "COM port",
             self.tc_com_port,
@@ -258,7 +257,7 @@ class AfmControllerPanel(wx.Panel):
             "",
         )
         self.add_labeled_pair_row(
-            grid,
+            self.global_settings_grid,
             parent,
             "Voltage compliance",
             self.tc_compliance,
@@ -267,9 +266,28 @@ class AfmControllerPanel(wx.Panel):
             self.tc_internal_max_current,
             "mA",
         )
-        self.add_labeled_single_row(grid, parent, "Measured voltage", self.tc_measured_voltage, "V")
+        self.add_labeled_pair_row(
+            self.global_settings_grid,
+            parent,
+            "Measured voltage",
+            self.tc_measured_voltage,
+            "V",
+            "",
+            wx.StaticText(parent, label=""),
+            "",
+        )
 
-        box.Add(grid, 0, wx.EXPAND | wx.ALL, 8)
+        self.source_mode_row = wx.BoxSizer(wx.HORIZONTAL)
+        self.cb_current_mode = wx.RadioButton(parent, label="Current mode", style=wx.RB_GROUP)
+        self.cb_intensity_mode = wx.RadioButton(parent, label="Intensity mode")
+        self.cb_current_mode.Bind(wx.EVT_RADIOBUTTON, self.on_source_mode_checkbox)
+        self.cb_intensity_mode.Bind(wx.EVT_RADIOBUTTON, self.on_source_mode_checkbox)
+        self.source_mode_row.Add(wx.StaticText(parent, label="Source mode"), 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 12)
+        self.source_mode_row.Add(self.cb_current_mode, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 16)
+        self.source_mode_row.Add(self.cb_intensity_mode, 0, wx.ALIGN_CENTER_VERTICAL)
+
+        box.Add(self.global_settings_grid, 0, wx.EXPAND)
+        box.Add(self.source_mode_row, 0, wx.EXPAND | wx.TOP, 8)
         self.tc_com_port.Bind(wx.EVT_TEXT, self.on_any_input_change)
         self.choice_baudrate.Bind(wx.EVT_CHOICE, self.on_any_input_change)
         self.tc_compliance.Bind(wx.EVT_TEXT, self.on_any_input_change)
@@ -277,51 +295,42 @@ class AfmControllerPanel(wx.Panel):
         return box
 
     def build_quick_test(self, parent):
-        box = wx.StaticBoxSizer(wx.VERTICAL, parent, "Quick Test")
+        box = wx.BoxSizer(wx.VERTICAL)
         self.cb_quick_test = wx.CheckBox(parent, label="Enable Quick Test")
         self.cb_quick_test.Bind(wx.EVT_CHECKBOX, self.on_quick_test_checkbox)
 
-        self.quick_test_grid = wx.FlexGridSizer(rows=1, cols=4, vgap=6, hgap=6)
-        self.quick_test_grid.AddGrowableCol(1, 1)
+        self.quick_test_row = wx.BoxSizer(wx.HORIZONTAL)
         self.st_quick_value_label = wx.StaticText(parent, label="Source current")
+        self.st_quick_value_label.SetMinSize((105, -1))
         self.tc_quick_value = wx.TextCtrl(parent, value="")
+        self.tc_quick_value.SetMinSize((80, -1))
         self.st_quick_unit = wx.StaticText(parent, label="mA")
         self.btn_quick_toggle = wx.Button(parent, label="ON")
         self.sync_quick_toggle_button_size()
         self.btn_quick_toggle.SetBackgroundColour(wx.Colour(0, 210, 0))
         self.btn_quick_toggle.Bind(wx.EVT_BUTTON, self.on_quick_toggle)
 
-        self.quick_test_grid.Add(self.st_quick_value_label, 0, wx.ALIGN_CENTER_VERTICAL)
-        self.quick_test_grid.Add(self.tc_quick_value, 0, wx.EXPAND | wx.ALIGN_CENTER_VERTICAL)
-        self.quick_test_grid.Add(self.st_quick_unit, 0, wx.ALIGN_CENTER_VERTICAL)
-        self.quick_test_grid.Add(self.btn_quick_toggle, 0, wx.ALIGN_CENTER_VERTICAL)
+        self.quick_test_row.Add(self.st_quick_value_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 6)
+        self.quick_test_row.Add(self.tc_quick_value, 1, wx.EXPAND | wx.RIGHT, 6)
+        self.quick_test_row.Add(self.st_quick_unit, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 6)
+        self.quick_test_row.Add(self.btn_quick_toggle, 0, wx.ALIGN_CENTER_VERTICAL)
 
-        box.Add(self.cb_quick_test, 0, wx.ALL, 6)
-        box.Add(self.quick_test_grid, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 8)
+        box.Add(self.cb_quick_test, 0, wx.BOTTOM, 8)
+        box.Add(self.quick_test_row, 0, wx.EXPAND)
         self.tc_quick_value.Bind(wx.EVT_TEXT, self.on_any_input_change)
         return box
 
-    def build_source_mode(self, parent):
-        box = wx.StaticBoxSizer(wx.VERTICAL, parent, "Source mode")
-        row = wx.BoxSizer(wx.HORIZONTAL)
-        self.cb_current_mode = wx.RadioButton(parent, label="Current mode", style=wx.RB_GROUP)
-        self.cb_intensity_mode = wx.RadioButton(parent, label="Intensity mode")
-        self.cb_current_mode.Bind(wx.EVT_RADIOBUTTON, self.on_source_mode_checkbox)
-        self.cb_intensity_mode.Bind(wx.EVT_RADIOBUTTON, self.on_source_mode_checkbox)
-        row.Add(self.cb_current_mode, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 5)
-        row.Add(self.cb_intensity_mode, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 5)
-        box.Add(row, 0, wx.EXPAND)
-        return box
-
     def build_intensity_function_section(self, parent):
-        box = wx.StaticBoxSizer(wx.VERTICAL, parent, "Intensity calibration / Function control")
-        self.intensity_function_notebook = wx.Notebook(parent)
+        panel = wx.Panel(parent)
+        sizer = wx.BoxSizer(wx.VERTICAL)
+        self.intensity_function_notebook = wx.Notebook(panel)
         self.calibration_controls_panel = self.build_intensity_calibration_page(self.intensity_function_notebook)
         self.function_controls_panel = self.build_function_control_page(self.intensity_function_notebook)
         self.intensity_function_notebook.AddPage(self.calibration_controls_panel, "Calibration")
         self.intensity_function_notebook.AddPage(self.function_controls_panel, "Function control")
-        box.Add(self.intensity_function_notebook, 0, wx.EXPAND | wx.ALL, 6)
-        return box
+        sizer.Add(self.intensity_function_notebook, 0, wx.EXPAND)
+        panel.SetSizer(sizer)
+        return panel
 
     def build_intensity_calibration_page(self, parent):
         panel = wx.Panel(parent)
@@ -382,17 +391,22 @@ class AfmControllerPanel(wx.Panel):
 
         self.tc_function_expr = wx.TextCtrl(panel, value=DEFAULT_FUNCTION_EXPR)
         self.btn_fit_function = wx.Button(panel, label="Fit it")
+        self.btn_parameterise_function = wx.Button(panel, label="Parameterise")
         self.btn_fit_function.Bind(wx.EVT_BUTTON, self.on_fit_function)
+        self.btn_parameterise_function.Bind(wx.EVT_BUTTON, self.on_parameterise_function)
         self.tc_function_xmin = wx.TextCtrl(panel, value=DEFAULT_FUNCTION_X_MIN)
         self.tc_function_xmax = wx.TextCtrl(panel, value=DEFAULT_FUNCTION_X_MAX)
         self.tc_function_ymin = wx.TextCtrl(panel, value=DEFAULT_FUNCTION_Y_MIN)
         self.tc_function_ymax = wx.TextCtrl(panel, value=DEFAULT_FUNCTION_Y_MAX)
+        self.sync_function_action_button_sizes()
 
-        expr_row = wx.FlexGridSizer(rows=1, cols=3, vgap=4, hgap=6)
+        expr_row = wx.FlexGridSizer(rows=1, cols=4, vgap=4, hgap=6)
         expr_row.AddGrowableCol(1, 1)
-        expr_row.Add(wx.StaticText(panel, label="f(x)"), 0, wx.ALIGN_CENTER_VERTICAL)
+        self.lbl_function_expr = wx.StaticText(panel, label="f(x) =")
+        expr_row.Add(self.lbl_function_expr, 0, wx.ALIGN_CENTER_VERTICAL)
         expr_row.Add(self.tc_function_expr, 0, wx.EXPAND | wx.ALIGN_CENTER_VERTICAL)
         expr_row.Add(self.btn_fit_function, 0, wx.ALIGN_CENTER_VERTICAL)
+        expr_row.Add(self.btn_parameterise_function, 0, wx.ALIGN_CENTER_VERTICAL)
 
         bounds_row = wx.FlexGridSizer(rows=1, cols=8, vgap=4, hgap=6)
         for col in [1, 3, 5, 7]:
@@ -408,10 +422,21 @@ class AfmControllerPanel(wx.Panel):
         bounds_row.Add(wx.StaticText(panel, label="Y max"), 0, wx.ALIGN_CENTER_VERTICAL)
         bounds_row.Add(self.tc_function_ymax, 0, wx.EXPAND | wx.ALIGN_CENTER_VERTICAL)
 
+        self.function_range_labels = [
+            wx.StaticText(panel, label="Current range = -- to -- mA"),
+            wx.StaticText(panel, label="Intensity range = -- to -- mW"),
+        ]
+        function_range_row = wx.FlexGridSizer(rows=1, cols=2, vgap=3, hgap=16)
+        function_range_row.AddGrowableCol(0, 1)
+        function_range_row.AddGrowableCol(1, 1)
+        for label in self.function_range_labels:
+            function_range_row.Add(label, 1, wx.EXPAND | wx.ALIGN_CENTER_VERTICAL)
+
         sizer = wx.BoxSizer(wx.VERTICAL)
         sizer.Add(self.cb_function_control, 0, wx.LEFT | wx.RIGHT | wx.TOP | wx.BOTTOM, 5)
         sizer.Add(expr_row, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 5)
         sizer.Add(bounds_row, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 6)
+        sizer.Add(function_range_row, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 6)
         panel.SetSizer(sizer)
 
         self.function_input_controls = [
@@ -454,7 +479,7 @@ class AfmControllerPanel(wx.Panel):
     def build_recurrent_panel(self, parent):
         scrolled = wx.ScrolledWindow(parent, style=wx.VSCROLL)
         scrolled.SetScrollRate(0, 20)
-        box = wx.StaticBoxSizer(wx.VERTICAL, scrolled, "Recurrent sequence")
+        sizer = wx.BoxSizer(wx.VERTICAL)
         grid = wx.FlexGridSizer(rows=5, cols=3, vgap=8, hgap=6)
         grid.AddGrowableCol(1, 1)
 
@@ -474,8 +499,8 @@ class AfmControllerPanel(wx.Panel):
         self.add_labeled_row(grid, scrolled, "Recurrent OFF time", self.tc_recurrent_off_time, "s")
         self.add_labeled_row(grid, scrolled, "Recurrent times", self.tc_recurrent_times, "")
 
-        box.Add(grid, 0, wx.EXPAND | wx.ALL, 10)
-        scrolled.SetSizer(box)
+        sizer.Add(grid, 0, wx.EXPAND | wx.ALL, 10)
+        scrolled.SetSizer(sizer)
         for ctrl in [
             self.tc_initial_off_time,
             self.tc_recurrent_on_value,
@@ -489,7 +514,7 @@ class AfmControllerPanel(wx.Panel):
     def build_step_panel(self, parent):
         scrolled = wx.ScrolledWindow(parent, style=wx.VSCROLL)
         scrolled.SetScrollRate(0, 20)
-        box = wx.StaticBoxSizer(wx.VERTICAL, scrolled, "Step sequence")
+        sizer = wx.BoxSizer(wx.VERTICAL)
         grid = wx.FlexGridSizer(rows=14, cols=4, vgap=5, hgap=6)
         grid.AddGrowableCol(2, 1)
         grid.AddGrowableCol(3, 1)
@@ -540,8 +565,8 @@ class AfmControllerPanel(wx.Panel):
         off7_check.Bind(wx.EVT_CHECKBOX, self.on_step_row_change)
         off7_time.Bind(wx.EVT_TEXT, self.on_any_input_change)
 
-        box.Add(grid, 0, wx.EXPAND | wx.ALL, 10)
-        scrolled.SetSizer(box)
+        sizer.Add(grid, 0, wx.EXPAND | wx.ALL, 10)
+        scrolled.SetSizer(sizer)
         return scrolled
 
     def build_bottom_buttons(self, parent):
@@ -577,48 +602,48 @@ class AfmControllerPanel(wx.Panel):
 
     def build_source_preview_page(self, parent):
         panel = wx.Panel(parent)
-        box = wx.StaticBoxSizer(wx.VERTICAL, panel, "Preview: source profile")
+        sizer = wx.BoxSizer(wx.VERTICAL)
         self.figure_source = Figure(figsize=(10.5, 4.9))
         self.ax_source = self.figure_source.add_subplot(111)
         self.ax_source_intensity = None
         self.canvas_source = FigureCanvasWxAgg(panel, -1, self.figure_source)
         self.canvas_source.SetMinSize((-1, 500))
-        box.Add(self.canvas_source, 1, wx.EXPAND | wx.ALL, 8)
-        panel.SetSizer(box)
+        sizer.Add(self.canvas_source, 1, wx.EXPAND | wx.ALL, 8)
+        panel.SetSizer(sizer)
         return panel
 
     def build_function_preview_page(self, parent):
         panel = wx.Panel(parent)
-        box = wx.StaticBoxSizer(wx.VERTICAL, panel, "Preview: function profile")
+        sizer = wx.BoxSizer(wx.VERTICAL)
         self.figure_function = Figure(figsize=(10.5, 4.9))
         self.ax_function = self.figure_function.add_subplot(111)
         self.canvas_function = FigureCanvasWxAgg(panel, -1, self.figure_function)
         self.canvas_function.SetMinSize((-1, 500))
-        box.Add(self.canvas_function, 1, wx.EXPAND | wx.ALL, 8)
-        panel.SetSizer(box)
+        sizer.Add(self.canvas_function, 1, wx.EXPAND | wx.ALL, 8)
+        panel.SetSizer(sizer)
         return panel
 
     def build_calibration_preview_page(self, parent):
         panel = wx.Panel(parent)
-        box = wx.StaticBoxSizer(wx.VERTICAL, panel, "Preview: intensity calibration")
+        sizer = wx.BoxSizer(wx.VERTICAL)
         self.figure_calibration = Figure(figsize=(10.5, 4.9))
         self.ax_calibration = self.figure_calibration.add_subplot(111)
         self.canvas_calibration = FigureCanvasWxAgg(panel, -1, self.figure_calibration)
         self.canvas_calibration.SetMinSize((-1, 500))
-        box.Add(self.canvas_calibration, 1, wx.EXPAND | wx.ALL, 8)
-        panel.SetSizer(box)
+        sizer.Add(self.canvas_calibration, 1, wx.EXPAND | wx.ALL, 8)
+        panel.SetSizer(sizer)
         return panel
 
     def build_live_voltage_page(self, parent):
         panel = wx.Panel(parent)
-        box = wx.StaticBoxSizer(wx.VERTICAL, panel, "Live measured voltage")
+        sizer = wx.BoxSizer(wx.VERTICAL)
         self.figure_live = Figure(figsize=(10.5, 4.9))
         self.ax_live = self.figure_live.add_subplot(111)
         self.ax_live_current = None
         self.canvas_live = FigureCanvasWxAgg(panel, -1, self.figure_live)
         self.canvas_live.SetMinSize((-1, 500))
-        box.Add(self.canvas_live, 1, wx.EXPAND | wx.ALL, 8)
-        panel.SetSizer(box)
+        sizer.Add(self.canvas_live, 1, wx.EXPAND | wx.ALL, 8)
+        panel.SetSizer(sizer)
         return panel
 
     def build_log(self, parent):
@@ -777,6 +802,17 @@ class AfmControllerPanel(wx.Panel):
         self.btn_quick_toggle.SetMinSize((96, input_height))
         self.btn_quick_toggle.SetInitialSize((96, input_height))
 
+    def sync_function_action_button_sizes(self):
+        if not hasattr(self, "btn_fit_function") or not hasattr(self, "btn_parameterise_function"):
+            return
+        fit_size = self.btn_fit_function.GetBestSize()
+        parameterise_size = self.btn_parameterise_function.GetBestSize()
+        width = max(fit_size.GetWidth(), parameterise_size.GetWidth())
+        height = max(fit_size.GetHeight(), parameterise_size.GetHeight())
+        for button in [self.btn_fit_function, self.btn_parameterise_function]:
+            button.SetMinSize((width, height))
+            button.SetInitialSize((width, height))
+
     def update_quick_test_controls(self):
         quick_enabled = self.cb_quick_test.IsChecked()
         self.cb_quick_test.Enable(not self.cb_function_control.IsChecked() or quick_enabled)
@@ -810,6 +846,7 @@ class AfmControllerPanel(wx.Panel):
             for ctrl in self.function_input_controls:
                 ctrl.Enable(False)
             self.btn_fit_function.Enable(False)
+            self.btn_parameterise_function.Enable(False)
         else:
             self.update_source_mode_controls()
             self.update_control_pattern_controls()
@@ -870,6 +907,7 @@ class AfmControllerPanel(wx.Panel):
         for ctrl in self.function_input_controls:
             ctrl.Enable(function_enabled and not quick_enabled)
         self.btn_fit_function.Enable(function_enabled and not quick_enabled)
+        self.btn_parameterise_function.Enable(function_enabled and not quick_enabled)
 
     def set_panel_enabled(self, window, enabled):
         window.Enable(enabled)
@@ -1069,6 +1107,57 @@ class AfmControllerPanel(wx.Panel):
         ast.fix_missing_locations(fitted_tree)
         return ast.unparse(fitted_tree)
 
+    @staticmethod
+    def parameter_name_for_index(index):
+        alphabet = "abcdefghijklmnopqrstuvwxyz"
+        name = ""
+        current = int(index)
+        while True:
+            name = alphabet[current % len(alphabet)] + name
+            current = current // len(alphabet) - 1
+            if current < 0:
+                return name
+
+    def parameterise_function_expression(self, expr):
+        expr, tree, existing_parameters = self.parse_function_fit_template(expr)
+        used_names = set(existing_parameters) | {"x"} | set(FUNCTION_FIT_NAMESPACE)
+        replacements = []
+        next_index = 0
+
+        def next_parameter_name():
+            nonlocal next_index
+            while True:
+                name = self.parameter_name_for_index(next_index)
+                next_index += 1
+                if name not in used_names:
+                    used_names.add(name)
+                    return name
+
+        def parameter_node(source_node):
+            name = next_parameter_name()
+            replacements.append(name)
+            return ast.copy_location(ast.Name(id=name, ctx=ast.Load()), source_node)
+
+        class NumericParameteriser(ast.NodeTransformer):
+            def visit_UnaryOp(self, node):
+                if isinstance(node.op, (ast.UAdd, ast.USub)) and isinstance(node.operand, ast.Constant):
+                    value = node.operand.value
+                    if isinstance(value, (int, float)) and not isinstance(value, bool):
+                        return parameter_node(node)
+                return self.generic_visit(node)
+
+            def visit_Constant(self, node):
+                value = node.value
+                if isinstance(value, (int, float)) and not isinstance(value, bool):
+                    return parameter_node(node)
+                return node
+
+        parameterised_tree = NumericParameteriser().visit(tree)
+        if not replacements:
+            raise ValueError("No numeric constants found in f(x) to parameterise.")
+        ast.fix_missing_locations(parameterised_tree)
+        return ast.unparse(parameterised_tree), replacements
+
     def fit_function_expression_to_bounds(self):
         expr = self.tc_function_expr.GetValue().strip()
         normalised_expr, _, parameter_names = self.parse_function_fit_template(expr)
@@ -1138,6 +1227,31 @@ class AfmControllerPanel(wx.Panel):
             self,
             "afm_function_fit_finished",
             {"duration_ms": int((time.monotonic() - started) * 1000), "underdetermined": underdetermined},
+        )
+
+    def on_parameterise_function(self, event):
+        try:
+            parameterised_expr, replacements = self.parameterise_function_expression(self.tc_function_expr.GetValue())
+        except Exception as exc:
+            self.show_warning(str(exc))
+            return
+
+        self.updating_function_fields = True
+        try:
+            self.tc_function_expr.SetValue(parameterised_expr)
+        finally:
+            self.updating_function_fields = False
+
+        self.log(
+            "Parameterise replaced numeric constants with independent parameters: "
+            + ", ".join(replacements)
+            + ". Equal numeric values are treated as separate parameters."
+        )
+        self.update_preview()
+        self.update_function_preview_plot()
+        self.show_warning(
+            "Parameterise treats each numeric value as an independent parameter, "
+            "even if two values are the same."
         )
 
     def solve_x_for_function_y(self, expr, target_y, search_min=0.0, search_max=10.0):
@@ -1671,6 +1785,9 @@ class AfmControllerPanel(wx.Panel):
             ]
         for label, value in zip(self.calibration_stats_labels, values):
             label.SetLabel(value)
+        if hasattr(self, "function_range_labels"):
+            for label, value in zip(self.function_range_labels, values[-2:]):
+                label.SetLabel(value)
 
     def update_function_preview_plot(self):
         if not hasattr(self, "ax_function"):

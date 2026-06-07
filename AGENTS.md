@@ -1,10 +1,10 @@
-﻿# Agent Instructions for Controllers & Analysers
+# Agent Instructions for Controllers & Analysers
 
 This file is the source of truth for coding agents working inside the `ca_app` project.
 
 ## 1. Active Project
 
-The active runnable application is the packaged v16.6.260606.2326 application:
+The active runnable application is the packaged v16.11.260607.0040 application:
 
 Version format:
 
@@ -12,12 +12,12 @@ Version format:
 v<major>.<minor>.<YYMMDD>.<HHMM>
 ```
 
-For `v16.6.260606.2326`:
+For `v16.11.260607.0040`:
 
 - `v16` is the larger version change.
-- `.6` is the smaller version number within v16.
-- `260606` is the date of the change in YYMMDD format.
-- `2326` is the exact 24-hour time when Codex, the coding agent, changed code or project files.
+- `.11` is the smaller version number within v16.
+- `260607` is the date of the change in YYMMDD format.
+- `0040` is the exact 24-hour time when Codex, the coding agent, changed code or project files.
 
 Whenever Codex implements changes from a plan, increment the smaller version number, update the date, update the exact 24-hour time, and propagate the new version to the program window title, About/Versions text, package metadata, and project documentation.
 
@@ -206,7 +206,7 @@ tests/
 
 ## 5. Refactor Rule
 
-The v16.6.260606.2326 application separates the main shell from independent workspace panels. The AFM/KPFM controller panel still intentionally keeps the tested Keithley runtime behavior together to avoid changing hardware semantics during naming and structure cleanup.
+The v16.11.260607.0040 application separates the main shell from independent workspace panels. The AFM/KPFM controller panel still intentionally keeps the tested Keithley runtime behavior together to avoid changing hardware semantics during naming and structure cleanup.
 
 When refactoring further:
 
@@ -264,7 +264,7 @@ Preserve current GUI behavior:
 - Successfully loading a calibration CSV automatically selects the Intensity calibration preview tab.
 - When a calibration model is loaded, the Source profile preview shows source current on the left y-axis and optical intensity on the right y-axis where applicable.
 - The Calibration tab shows compact fit statistics as six static labels in two rows, not a multiline text box.
-- The Intensity calibration / Function control section should remain compact; the Function control tab is intentionally arranged in dense rows so the notebook does not leave large blank space.
+- The Calibration / Function control notebook should remain compact; the Function control tab is intentionally arranged in dense rows so the notebook does not leave large blank space.
 - The Live voltage preview shows measured voltage on the left axis and source current on the right axis. It starts at 0 V / 0 mA when `START` is pressed and continues plotting 0 V / 0 mA software-known points during OFF stages.
 - The bottom controller buttons use two rows: `Save CSV (Source)`, `Save Parameters`, `Load Parameters`; then `Save Keithley CSV`, `START`, `STOP`.
 
@@ -360,7 +360,7 @@ Y min = 0.1
 Y max = 4.99
 ```
 
-The `Fit it` button on the `f(x)` row solves parameterized templates. If the expression contains names other than `x`, allowed constants/functions, or `np`, those names are treated as fit parameters.
+The `Fit it` button on the `f(x) =` row solves parameterized templates. If the expression contains names other than `x`, allowed constants/functions, or `np`, those names are treated as fit parameters.
 
 Examples:
 
@@ -372,6 +372,8 @@ a*x^2+b*x+c
 When fit parameters are present, automatic endpoint calculation is disabled. The user must fill all four endpoint fields and press `Fit it`.
 
 After fitting, the expression is replaced with a numeric expression so preview, CSV export, validation, and execution use the safe evaluator.
+
+The `Parameterise` button on the same row converts numeric constants in the current expression back into alphabetic fit parameters from left to right. Each numeric occurrence is treated as an independent parameter, even when two numeric values are equal, and the user is warned about that assumption.
 
 If the template cannot fit both endpoint points, show an error. For underdetermined templates such as `a*x^2+b*x+c`, the app uses a deterministic minimum-norm solution and logs that choice.
 
@@ -434,6 +436,7 @@ Usage logs are separate from app-state restore and manual parameter files:
 - The About menu exposes `Open Usage Log Folder` and a `Usage Logging` toggle.
 - Log workspace/tab changes, app open/close, load/save actions, fit start/finish/failure, and long-operation durations.
 - Record file basename, extension, and coarse counts/durations only. Do not log full file paths, raw spectra, image data, measured hardware traces, measured voltages/currents, calibration table rows, user comments, or exported data contents.
+- `sanitize_metadata()` redacts unsafe metadata keys as a last-resort guard, but callers should still avoid passing unsafe values in the first place.
 - When adding a new workspace or expensive operation, add a small, sanitized usage event so later optimization can be based on real user workflows.
 
 Important restore-maintenance rule:
@@ -732,7 +735,7 @@ Manual GUI checks without hardware:
 20. Loading a calibration CSV switches to Intensity calibration preview.
 21. With calibration loaded, Source profile preview shows current on the left y-axis and intensity on the right y-axis.
 22. Calibration fit statistics are shown as six compact static labels in two rows.
-23. The Intensity calibration / Function control section has no large blank area below the calibration statistics.
+23. The Calibration / Function control notebook has no large blank area below the calibration statistics.
 24. Live voltage/current plotting starts immediately at 0 V / 0 mA and continues through OFF stages with 0 V / 0 mA points.
 25. OFF stages do not query Keithley measurements while output is off.
 26. A normal finish, STOP, or exception sends current 0 and output OFF before serial close.

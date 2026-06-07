@@ -1,6 +1,6 @@
-﻿# Runtime Package
+# Runtime Package
 
-Version: `v16.6.260606.2326`
+Version: `v16.11.260607.0040`
 
 This package contains runtime support services and is also the planned extraction area for future worker services. The AFM/KPFM controller panel still keeps worker-thread orchestration locally to preserve tested hardware behavior.
 

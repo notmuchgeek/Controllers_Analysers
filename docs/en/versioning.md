@@ -1,6 +1,6 @@
-﻿# Versioning
+# Versioning
 
-Version: `v16.6.260606.2326`
+Version: `v16.11.260607.0040`
 
 The v16 series uses a four-part version string:
 
@@ -11,17 +11,17 @@ v<major>.<minor>.<YYMMDD>.<HHMM>
 For Python package metadata, omit the leading `v`:
 
 ```text
-16.6.260606.2326
+16.11.260607.0040
 ```
 
 ## Meaning
 
-For `v16.6.260606.2326`:
+For `v16.11.260607.0040`:
 
 - `v16`: larger version series.
-- `6`: smaller version within v16.
-- `260606`: edit date, `YYMMDD`.
-- `2326`: exact edit time, 24-hour `HHMM`, when the coding agent changed the project.
+- `11`: smaller version within v16.
+- `260607`: edit date, `YYMMDD`.
+- `0040`: exact edit time, 24-hour `HHMM`, when the coding agent changed the project.
 
 ## Update Rule
 
@@ -30,19 +30,19 @@ Whenever Codex implements changes from a plan, increment the smaller version wit
 Example from one v16 implementation to the next:
 
 ```text
-v16.<old-minor>.<old-date>.<old-time> -> v16.6.260606.2326
+v16.<old-minor>.<old-date>.<old-time> -> v16.11.260607.0040
 ```
 
-If a later planned implementation occurs on the same day at 23:04:
+If a later planned implementation occurs on the same day at 00:45:
 
 ```text
-v16.6.260606.2326 -> v16.7.260606.2304
+v16.11.260607.0040 -> v16.12.260607.0045
 ```
 
 If the next planned implementation occurs on a later day:
 
 ```text
-v16.6.260606.2326 -> v16.7.<new date>.<new time>
+v16.11.260607.0040 -> v16.12.<new date>.<new time>
 ```
 
 ## Required Locations

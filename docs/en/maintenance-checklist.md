@@ -1,6 +1,6 @@
-﻿# Maintenance Checklist
+# Maintenance Checklist
 
-Version: `v16.6.260606.2326`
+Version: `v16.11.260607.0040`
 
 Use this checklist before handing back code or documentation changes.
 

@@ -1,4 +1,4 @@
-﻿# Controllers & Analysers
+# Controllers & Analysers
 
 **English** | [简体中文](README.zh-CN.md)
 
@@ -18,7 +18,7 @@ If this is your first time using this copy of the project:
 4. Double-click `ca_app.lnk` to open Controllers & Analysers.
 5. You may copy `ca_app.lnk` to your Desktop for easier access.
 
-The app window title shows the current version: `Controller & Analysers v16.6.260606.2326`.
+The app window title shows the current version: `Controller & Analysers v16.11.260607.0040`.
 
 ## Everyday Use
 

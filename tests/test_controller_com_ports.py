@@ -12,10 +12,12 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..",
 try:
     import wx
     from ca_app.gui.panels.afm_controller_panel import AfmControllerPanel, SOURCE_INTENSITY
+    from ca_app.gui.panels.afm_kpfm_panel import AfmKpfmPanel
     from ca_app.gui.panels.tpc_panel import TpcLaserDiodePanel
 except ImportError:
     wx = None
     AfmControllerPanel = None
+    AfmKpfmPanel = None
     TpcLaserDiodePanel = None
     SOURCE_INTENSITY = "Intensity"
 
@@ -108,26 +110,69 @@ class ControllerComPortGuiTests(unittest.TestCase):
 
             self.assertEqual(panel.top_settings_notebook.GetPageCount(), 2)
             self.assertEqual(panel.top_settings_notebook.GetPageText(0), "Global settings")
-            self.assertEqual(panel.top_settings_notebook.GetPageText(1), "Source / Quick Test")
+            self.assertEqual(panel.top_settings_notebook.GetPageText(1), "Quick Test")
             self.assertIs(panel.top_settings_notebook.GetPage(0), panel.global_settings_panel)
             self.assertIs(panel.top_settings_notebook.GetPage(1), panel.source_quick_panel)
+            self.assertEqual(panel.top_settings_notebook.GetMinSize().GetHeight(), -1)
+            self.assertLessEqual(panel.top_settings_notebook.GetBestSize().GetHeight(), 170)
 
-            global_box = panel.global_settings_panel.GetSizer().GetItem(0).GetSizer()
-            global_grid = global_box.GetItem(0).GetSizer()
+            global_sizer = panel.global_settings_panel.GetSizer().GetItem(0).GetSizer()
+            global_grid = global_sizer.GetItem(0).GetSizer()
+            source_mode_row = global_sizer.GetItem(1).GetSizer()
+            self.assertIsInstance(global_sizer, wx.BoxSizer)
+            self.assertNotIsInstance(global_sizer, wx.StaticBoxSizer)
+            self.assertIs(global_grid, panel.global_settings_grid)
+            self.assertIs(source_mode_row, panel.source_mode_row)
             self.assertEqual(global_grid.GetRows(), 3)
             self.assertEqual(global_grid.GetCols(), 6)
+            self.assertIs(global_grid.GetItem(13).GetWindow(), panel.tc_measured_voltage)
+            self.assertIs(source_mode_row.GetItem(1).GetWindow(), panel.cb_current_mode)
+            self.assertIs(source_mode_row.GetItem(2).GetWindow(), panel.cb_intensity_mode)
             self.assertFalse(hasattr(panel, "tc_step_status"))
             input_height = panel.tc_quick_value.GetBestSize().GetHeight()
             button_size = panel.btn_quick_toggle.GetMinSize()
             self.assertGreaterEqual(button_size.GetWidth(), 90)
             self.assertLessEqual(abs(button_size.GetHeight() - input_height), 2)
-            self.assertEqual(panel.quick_test_grid.GetCols(), 4)
-            self.assertIs(panel.quick_test_grid.GetItem(3).GetWindow(), panel.btn_quick_toggle)
+            self.assertIsInstance(panel.quick_test_row, wx.BoxSizer)
+            self.assertIs(panel.quick_test_row.GetItem(0).GetWindow(), panel.st_quick_value_label)
+            self.assertIs(panel.quick_test_row.GetItem(1).GetWindow(), panel.tc_quick_value)
+            self.assertEqual(panel.quick_test_row.GetItem(1).GetProportion(), 1)
+            self.assertIs(panel.quick_test_row.GetItem(3).GetWindow(), panel.btn_quick_toggle)
+            quick_sizer = panel.source_quick_panel.GetSizer().GetItem(0).GetSizer()
+            self.assertIsInstance(quick_sizer, wx.BoxSizer)
+            self.assertNotIsInstance(quick_sizer, wx.StaticBoxSizer)
+            self.assertLessEqual(panel.source_quick_panel.GetSizer().CalcMin().GetHeight(), 80)
+            for preview_panel in [
+                panel.source_preview_panel,
+                panel.function_preview_panel,
+                panel.calibration_preview_panel,
+                panel.live_voltage_panel,
+            ]:
+                self.assertIsInstance(preview_panel.GetSizer(), wx.BoxSizer)
+                self.assertNotIsInstance(preview_panel.GetSizer(), wx.StaticBoxSizer)
             self.assertEqual(panel.btn_save_keithley.GetLabel(), "Save Keithley CSV")
             self.assertFalse(panel.btn_save_keithley.IsEnabled())
 
             self.assertIsInstance(panel.recurrent_panel, wx.ScrolledWindow)
             self.assertIsInstance(panel.step_panel, wx.ScrolledWindow)
+            self.assertIsInstance(panel.recurrent_panel.GetSizer(), wx.BoxSizer)
+            self.assertNotIsInstance(panel.recurrent_panel.GetSizer(), wx.StaticBoxSizer)
+            self.assertIsInstance(panel.step_panel.GetSizer(), wx.BoxSizer)
+            self.assertNotIsInstance(panel.step_panel.GetSizer(), wx.StaticBoxSizer)
+        finally:
+            frame.Destroy()
+
+    def test_afm_kpfm_outer_notebook_matches_workspace_bounds(self):
+        frame = wx.Frame(None)
+        try:
+            panel = AfmKpfmPanel(frame)
+
+            self.assertEqual(panel.notebook.GetPageText(0), "Controller")
+            self.assertEqual(panel.notebook.GetPageText(1), "Analysis")
+            notebook_item = panel.GetSizer().GetItem(0)
+            self.assertIs(notebook_item.GetWindow(), panel.notebook)
+            self.assertTrue(notebook_item.GetFlag() & wx.EXPAND)
+            self.assertEqual(notebook_item.GetBorder(), 0)
         finally:
             frame.Destroy()
 
@@ -159,6 +204,10 @@ class ControllerComPortGuiTests(unittest.TestCase):
                 "Current range = 67 to 94 mA",
                 "Intensity range = 0.020575 to 4.995 mW",
             ])
+            self.assertEqual([label.GetLabel() for label in panel.function_range_labels], [
+                "Current range = 67 to 94 mA",
+                "Intensity range = 0.020575 to 4.995 mW",
+            ])
         finally:
             frame.Destroy()
 
@@ -168,9 +217,43 @@ class ControllerComPortGuiTests(unittest.TestCase):
             panel = AfmControllerPanel(frame)
             function_height = panel.function_controls_panel.GetSizer().CalcMin().GetHeight()
             notebook_height = panel.intensity_function_notebook.GetBestSize().GetHeight()
+            intensity_function_panel = panel.intensity_function_notebook.GetParent()
 
+            self.assertIsInstance(intensity_function_panel.GetSizer(), wx.BoxSizer)
+            self.assertNotIsInstance(intensity_function_panel.GetSizer(), wx.StaticBoxSizer)
+            self.assertEqual(panel.intensity_function_notebook.GetPageText(0), "Calibration")
+            self.assertEqual(panel.intensity_function_notebook.GetPageText(1), "Function control")
+            self.assertEqual(panel.lbl_function_expr.GetLabel(), "f(x) =")
+            self.assertEqual(panel.btn_parameterise_function.GetLabel(), "Parameterise")
+            self.assertEqual(panel.btn_parameterise_function.GetMinSize().Get(), panel.btn_fit_function.GetMinSize().Get())
+            self.assertEqual([label.GetLabel() for label in panel.function_range_labels], [
+                "Current range = -- to -- mA",
+                "Intensity range = -- to -- mW",
+            ])
             self.assertLessEqual(function_height, 120)
             self.assertLessEqual(notebook_height, 160)
+        finally:
+            frame.Destroy()
+
+    def test_afm_function_parameterise_replaces_numeric_literals(self):
+        frame = wx.Frame(None)
+        try:
+            panel = AfmControllerPanel(frame)
+
+            expr, names = panel.parameterise_function_expression("x * 0.48 + 0.029")
+            self.assertEqual(expr, "x * a + b")
+            self.assertEqual(names, ["a", "b"])
+
+            expr, names = panel.parameterise_function_expression("x * 0.48 + 0.48")
+            self.assertEqual(expr, "x * a + b")
+            self.assertEqual(names, ["a", "b"])
+
+            panel.tc_function_expr.SetValue("x*a+b")
+            with patch.object(panel, "show_warning") as warning:
+                panel.on_parameterise_function(None)
+            self.assertEqual(panel.tc_function_expr.GetValue(), "x*a+b")
+            warning.assert_called_once()
+            self.assertIn("No numeric constants", warning.call_args.args[0])
         finally:
             frame.Destroy()
 

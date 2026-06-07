@@ -1928,7 +1928,7 @@ class RamanSubstrateBaselinePanel(wx.Panel):
         box = wx.StaticBoxSizer(wx.VERTICAL, scrolled, "Substrate Baseline")
 
         self.btn_load_raw = wx.Button(scrolled, label="Load txt")
-        self.lbl_raw = wx.StaticText(scrolled, label="No Raman file loaded")
+        self.lbl_raw = wx.TextCtrl(scrolled, value="No Raman file loaded", style=wx.TE_READONLY)
         self.btn_load_raw.Bind(wx.EVT_BUTTON, self.on_load_raw)
         box.Add(self.add_load_row(self.btn_load_raw, self.lbl_raw), 0, wx.EXPAND | wx.ALL, 5)
 
@@ -1968,8 +1968,8 @@ class RamanSubstrateBaselinePanel(wx.Panel):
         param_grid.Add(self.tc_param3, 0, wx.EXPAND | wx.ALIGN_CENTER_VERTICAL)
         box.Add(param_grid, 0, wx.EXPAND | wx.ALL, 5)
 
-        self.btn_load_wire = wx.Button(scrolled, label="Load WiRE software analysed results")
-        self.lbl_wire = wx.StaticText(scrolled, label="No WiRE result loaded")
+        self.btn_load_wire = wx.Button(scrolled, label="Load fitted")
+        self.lbl_wire = wx.TextCtrl(scrolled, value="No fitted result loaded", style=wx.TE_READONLY)
         self.btn_load_wire.Bind(wx.EVT_BUTTON, self.on_load_wire)
         box.Add(self.add_load_row(self.btn_load_wire, self.lbl_wire), 0, wx.EXPAND | wx.ALL, 5)
 
@@ -2041,7 +2041,7 @@ class RamanSubstrateBaselinePanel(wx.Panel):
             return
         self.raw_path = path
         self.result = None
-        self.lbl_raw.SetLabel(Path(path).name)
+        self.lbl_raw.SetValue(Path(path).name)
         self.tc_output_name.SetValue(default_output_name(path))
         self.btn_save.Disable()
         self.draw_loaded_raw()
@@ -2051,7 +2051,7 @@ class RamanSubstrateBaselinePanel(wx.Panel):
             self.start_fit("Auto fitting after Raman file load.")
 
     def on_load_wire(self, event):
-        paths = self.open_txt_file("Load WiRE software analysed results")
+        paths = self.open_txt_file("Load fitted result")
         if not paths:
             return
         path = paths[0]
@@ -2061,8 +2061,8 @@ class RamanSubstrateBaselinePanel(wx.Panel):
             self.show_warning(str(exc))
             return
         self.wire_path = path
-        self.lbl_wire.SetLabel(Path(path).name)
-        self.log(f"Loaded WiRE software analysed results: {Path(path).name}.")
+        self.lbl_wire.SetValue(Path(path).name)
+        self.log(f"Loaded fitted result: {Path(path).name}.")
         log_usage_event(self, "raman_baseline_wire_loaded", file_metadata(path))
         if self.result is not None:
             self.draw_result()
@@ -2409,7 +2409,7 @@ class RamanSubstrateBaselinePanel(wx.Panel):
             try:
                 self.raw_spectrum = read_raman_txt(raw_path)
                 self.raw_path = raw_path
-                self.lbl_raw.SetLabel(Path(raw_path).name)
+                self.lbl_raw.SetValue(Path(raw_path).name)
                 if not self.tc_output_name.GetValue().strip():
                     self.tc_output_name.SetValue(default_output_name(raw_path))
                 self.draw_loaded_raw()
@@ -2417,29 +2417,29 @@ class RamanSubstrateBaselinePanel(wx.Panel):
             except Exception as exc:
                 self.raw_path = raw_path
                 self.raw_spectrum = None
-                self.lbl_raw.SetLabel(Path(raw_path).name)
+                self.lbl_raw.SetValue(Path(raw_path).name)
                 self.log(f"Could not restore Raman file: {exc}")
         else:
             self.raw_path = ""
             self.raw_spectrum = None
-            self.lbl_raw.SetLabel("No Raman file loaded")
+            self.lbl_raw.SetValue("No Raman file loaded")
 
         wire_path = str(params.get("wire_path", "") or "")
         if wire_path:
             try:
                 self.wire_spectrum = read_raman_txt(wire_path)
                 self.wire_path = wire_path
-                self.lbl_wire.SetLabel(Path(wire_path).name)
+                self.lbl_wire.SetValue(Path(wire_path).name)
                 self.log(f"Restored WiRE result: {Path(wire_path).name}.")
             except Exception as exc:
                 self.wire_path = wire_path
                 self.wire_spectrum = None
-                self.lbl_wire.SetLabel(Path(wire_path).name)
+                self.lbl_wire.SetValue(Path(wire_path).name)
                 self.log(f"Could not restore WiRE result: {exc}")
         else:
             self.wire_path = ""
             self.wire_spectrum = None
-            self.lbl_wire.SetLabel("No WiRE result loaded")
+            self.lbl_wire.SetValue("No fitted result loaded")
         if self.raw_spectrum is None:
             self.clear_preview()
 

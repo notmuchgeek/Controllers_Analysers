@@ -1,6 +1,6 @@
-﻿# Calibration And Function Profiles
+# Calibration And Function Profiles
 
-Version: `v16.6.260606.2326`
+Version: `v16.11.260607.0040`
 
 This document describes the two transformation layers used by the AFM/KPFM controller: current-intensity calibration and function-profile generation.
 
@@ -76,6 +76,8 @@ Examples:
 x*m+b
 a*x^2+b*x+c
 ```
+
+`Parameterise` converts numeric constants in the current expression back into alphabetic fit parameters from left to right. Equal numeric values are intentionally treated as separate parameters.
 
 When parameters are fitted, the expression is replaced with a numeric expression. Preview, validation, export, and runtime execution then use the same safe evaluated form.
 

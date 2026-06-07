@@ -1,4 +1,4 @@
-﻿"""Main application frame for Controllers & Analysers."""
+"""Main application frame for Controllers & Analysers."""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ from ca_app.runtime.usage_logger import USAGE_LOG_DIRNAME, UsageLogger
 
 WORKSPACE_NAMES = ("AFM/KPFM", "APS", "TPC", "Raman")
 DEFAULT_WORKSPACE = "AFM/KPFM"
-APP_VERSION = "v16.6.260606.2326"
+APP_VERSION = "v16.11.260607.0040"
 APP_TITLE = f"Controller & Analysers {APP_VERSION}"
 STATE_FILENAME = "app_state.json"
 RESTORE_VIEW = "view"

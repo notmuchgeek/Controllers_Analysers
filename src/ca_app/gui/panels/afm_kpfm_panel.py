@@ -25,7 +25,7 @@ class AfmKpfmPanel(wx.Panel):
         self.notebook.AddPage(self.controller_page, "Controller")
         self.notebook.AddPage(self.analysis_placeholder, "Analysis")
         self.notebook.Bind(wx.EVT_NOTEBOOK_PAGE_CHANGED, self.on_notebook_page_changed)
-        sizer.Add(self.notebook, 1, wx.EXPAND | wx.ALL, 8)
+        sizer.Add(self.notebook, 1, wx.EXPAND)
         self.SetSizer(sizer)
 
     def build_analysis_placeholder(self):

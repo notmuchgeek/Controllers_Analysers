@@ -238,6 +238,12 @@ class RamanInsituEchemGuiTests(unittest.TestCase):
                 ["Baseline", "Mapping", "Insitu EChem", "Electrical"],
             )
             self.assertEqual(panel.substrate_page.btn_load_raw.GetLabel(), "Load txt")
+            self.assertEqual(panel.substrate_page.btn_load_wire.GetLabel(), "Load fitted")
+            self.assertIsInstance(panel.substrate_page.lbl_raw, wx.TextCtrl)
+            self.assertIsInstance(panel.substrate_page.lbl_wire, wx.TextCtrl)
+            self.assertTrue(panel.substrate_page.lbl_raw.GetWindowStyleFlag() & wx.TE_READONLY)
+            self.assertTrue(panel.substrate_page.lbl_wire.GetWindowStyleFlag() & wx.TE_READONLY)
+            self.assertEqual(panel.substrate_page.lbl_wire.GetValue(), "No fitted result loaded")
             self.assertEqual(panel.insitu_page.btn_load_insitu.GetLabel(), "Load wdf/txt")
         finally:
             frame.Destroy()

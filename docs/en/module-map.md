@@ -1,6 +1,6 @@
-﻿# Module Map
+# Module Map
 
-Version: `v16.6.260606.2326`
+Version: `v16.11.260607.0040`
 
 This map describes the project from the top layer to the lower implementation layers.
 

@@ -1,6 +1,6 @@
-﻿# Testing
+# Testing
 
-Version: `v16.6.260606.2326`
+Version: `v16.11.260607.0040`
 
 Testing has two layers: automated non-hardware tests and manual GUI checks. Hardware tests require explicit user confirmation.
 
@@ -26,7 +26,7 @@ python run_ca_app.py
 Confirm that the window title is:
 
 ```text
-Controller & Analysers v16.6.260606.2326
+Controller & Analysers v16.11.260607.0040
 ```
 
 Open `Help -> About` and confirm the same version appears in the Versions section.

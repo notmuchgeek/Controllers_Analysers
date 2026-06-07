@@ -1,6 +1,6 @@
-﻿# Developer Guide
+# Developer Guide
 
-Version: `v16.6.260606.2326`
+Version: `v16.11.260607.0040`
 
 This guide is for coding agents and human maintainers.
 
@@ -56,6 +56,8 @@ Use `ca_app.runtime.usage_logger.log_usage_event()` from GUI code when adding a 
 - Not OK: full file paths, raw spectra/image arrays, measured hardware traces, measured voltages/currents, calibration CSV rows, comments, or exported data contents.
 
 Logging must stay best-effort. Never make a user action fail because a usage log cannot be written.
+
+`sanitize_metadata()` redacts obviously unsafe metadata keys as a last-resort guard. Treat that as protection against mistakes, not permission to pass sensitive values.
 
 ## Version Updates
 

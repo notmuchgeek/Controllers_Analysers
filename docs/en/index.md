@@ -1,6 +1,6 @@
-﻿# Documentation Index
+# Documentation Index
 
-Version: `v16.6.260606.2326`
+Version: `v16.11.260607.0040`
 
 This directory is the English engineering documentation for Controllers & Analysers. It is intended for GitHub users, lab users, maintainers, and coding agents.
 

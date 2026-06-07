@@ -1,6 +1,6 @@
-﻿# Hardware Safety
+# Hardware Safety
 
-Version: `v16.6.260606.2326`
+Version: `v16.11.260607.0040`
 
 This file is retained as a compatibility entry point for older links.
 
