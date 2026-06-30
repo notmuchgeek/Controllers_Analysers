@@ -1,6 +1,6 @@
-﻿# Testing
+# Testing
 
-Version: `v16.17.260608.0011`
+Version: `v16.21.260630.2340`
 
 Testing has two layers: automated non-hardware tests and manual GUI checks. Hardware tests require explicit user confirmation.
 
@@ -26,10 +26,18 @@ python run_ca_app.py
 Confirm that the window title is:
 
 ```text
-Controller & Analysers v16.17.260608.0011
+Controller & Analysers v16.21.260630.2340
 ```
 
 Open `Help -> About` and confirm the same version appears in the Versions section.
+
+## Bootstrap Checks
+
+The bootstrap tests must use temporary requirements, wheelhouse, marker, and
+interpreter paths. They cover a clean installation, an already-ready
+environment, marker reuse, changed requirements/interpreters, removed packages,
+missing pip, installation failure, and the minimum Python version. Do not let
+these tests install into the Python environment running the test suite.
 
 ## AFM/KPFM Controller Checks
 

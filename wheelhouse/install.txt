@@ -1,1 +1,7 @@
-python -m pip install --no-index --find-links=. renishawWiRE wxPython==4.2.5 pyserial
+The wheelhouse is a partial local cache. From the project folder, use:
+
+python -m pip install --only-binary=:all: --find-links=wheelhouse -r requirements.txt
+
+Compatible wheels in this folder are used locally. Packages not present here are
+downloaded from PyPI. For normal first-time setup, double-click
+create_ca_app_shortcut.bat instead of running this command manually.

@@ -156,6 +156,7 @@ class AppStateGuiTests(unittest.TestCase):
                 self.assertIn(APP_TITLE, versions_message)
                 self.assertIn(APP_TITLE, about_message)
                 self.assertNotIn("Other Workspaces", versions_message)
+                self.assertIn("Raman Converting", versions_message)
                 self.assertIn("Raman Electrical", versions_message)
             finally:
                 wx.MessageBox = original_message_box
@@ -174,7 +175,7 @@ class AppStateGuiTests(unittest.TestCase):
 
                 frame.apply_panel_tab_state(raman, old_state)
 
-                self.assertEqual(raman.notebook.GetSelection(), 2)
+                self.assertEqual(raman.notebook.GetSelection(), 3)
                 self.assertEqual(raman.insitu_page.insitu_notebook.GetSelection(), 1)
                 self.assertEqual(raman.mapping_page.mapping_notebook.GetSelection(), 0)
             finally:
@@ -193,7 +194,7 @@ class AppStateGuiTests(unittest.TestCase):
 
                 frame.apply_panel_tab_state(raman, electrical_state)
 
-                self.assertEqual(raman.notebook.GetSelection(), 3)
+                self.assertEqual(raman.notebook.GetSelection(), 4)
                 self.assertEqual(raman.electrical_page.electrical_notebook.GetSelection(), 1)
             finally:
                 frame.Destroy()

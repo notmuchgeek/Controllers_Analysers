@@ -1,21 +1,21 @@
-﻿[build-system]
+[build-system]
 requires = ["setuptools>=69", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "ca-app"
-version = "16.17.260608.0011"
+version = "16.21.260630.2340"
 description = "wxPython GUI for experiment control and analysis workflows."
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-  "wxPython>=4.2",
-  "pyserial>=3.5",
+  "wxPython==4.2.5",
+  "pyserial==3.5",
   "numpy>=1.26",
   "matplotlib>=3.8",
   "scipy>=1.11",
   "Pillow>=10",
-  "renishawWiRE",
+  "renishawWiRE==0.1.16",
 ]
 
 [project.scripts]

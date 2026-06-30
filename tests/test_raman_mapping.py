@@ -10,8 +10,10 @@ import numpy as np
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
 
 from ca_app.core.raman_mapping import (
+    RamanDataset,
     RamanMappingError,
     build_unstacked_table,
+    export_individual_origin_txt,
     export_origin_txt,
     export_selected_sequence_txt,
     load_raman_data,
@@ -87,6 +89,36 @@ class RamanMappingCoreTests(unittest.TestCase):
         self.assertEqual(lines[1], "cm\\+(-1)\ta.u.\ta.u.")
         self.assertEqual(lines[2], "\tSequence 1\tSequence 2")
         self.assertEqual(len(lines[3].split("\t")), 3)
+
+    def test_individual_origin_export_writes_one_two_column_file_per_spectrum(self):
+        data = read_wire_txt(self.make_small_map_file())
+        with tempfile.TemporaryDirectory() as tmp:
+            saved = export_individual_origin_txt(data, tmp, source_stem="map")
+            names = [path.name for path in saved]
+            first_lines = saved[0].read_text(encoding="utf-8").splitlines()
+            second_lines = saved[1].read_text(encoding="utf-8").splitlines()
+
+        self.assertEqual(names, ["map_sequence_1.txt", "map_sequence_2.txt"])
+        self.assertEqual(first_lines[:2], ["Wavenumber\tIntensity", "cm\\+(-1)\ta.u."])
+        self.assertEqual(first_lines[2], "100.000000\t10.000000")
+        self.assertEqual(second_lines[2], "100.000000\t30.000000")
+        self.assertEqual(len(first_lines[2].split("\t")), 2)
+        self.assertFalse(any("Sequence" in line for line in first_lines[:2]))
+        self.assertFalse(any("Averaged" in line or "Normalised" in line for line in first_lines))
+
+    def test_individual_origin_export_preserves_sequence_labels_in_filenames(self):
+        source = read_wire_txt(self.make_small_map_file())
+        data = RamanDataset(
+            source_path=source.source_path,
+            source_type=source.source_type,
+            wavenumber=source.wavenumber,
+            intensity_matrix=source.intensity_matrix,
+            metadata={**source.metadata, "Sequence": np.asarray([3, 7])},
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            saved = export_individual_origin_txt(data, tmp, source_stem="sample")
+
+        self.assertEqual([path.name for path in saved], ["sample_sequence_3.txt", "sample_sequence_7.txt"])
 
     def test_parse_selected_spectra_rejects_out_of_range(self):
         self.assertEqual(parse_selected_spectra("1,3", 3), [0, 2])

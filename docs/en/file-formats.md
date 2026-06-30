@@ -1,6 +1,6 @@
-﻿# File Formats
+# File Formats
 
-Version: `v16.17.260608.0011`
+Version: `v16.21.260630.2340`
 
 This document lists the user-facing file formats expected by the application.
 
@@ -29,6 +29,12 @@ Baseline also accepts multi-spectrum TXT using `#Time/#Wave/#Intensity`, `#Seque
 
 Saved corrected output follows the loaded logical input format: two-column TXT, `#Time/#Wave/#Intensity`, `#Sequence/#Wave/#Intensity`, or Origin-style wide TXT.
 
+## Raman Converting WDF/TXT
+
+Converting accepts WDF, stacked mapping/sequence TXT, Origin-style wide TXT, and two-column TXT. Each list item exports independently in Origin-friendly wide TXT format with three header rows, a wavenumber column, and one column per spectrum. Converting exports do not add averaged or normalised columns.
+
+Baseline-corrected list entries use the source stem plus `_baselined`; WDF source extensions are replaced with `.txt` during export.
+
 ## Raman Mapping TXT
 
 Stacked mapping text:
@@ -45,6 +51,8 @@ The loader unpacks stacked spectra into a wide table with:
 - Normalised intensity.
 
 Mapping Save file exports Origin-friendly TXT with repeated `Intensity` long names, `cm\+(-1)` as the wavenumber unit, `Sequence N` labels in the third header row, and optional averaged/normalised columns.
+
+Mapping `Save one for each` writes `<source_stem>_sequence_<sequence>.txt` for every raw spectrum. These individual files have two header rows (`Wavenumber`/`Intensity`, then `cm\+(-1)`/`a.u.`) and two numeric columns. They do not contain a third sequence row, averaged intensity, or normalised intensity.
 
 ## Raman Mapping WDF
 

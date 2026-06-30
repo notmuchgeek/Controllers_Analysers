@@ -1,0 +1,7 @@
+wxPython==4.2.5
+pyserial==3.5
+numpy>=1.26
+matplotlib>=3.8
+scipy>=1.11
+Pillow>=10
+renishawWiRE==0.1.16

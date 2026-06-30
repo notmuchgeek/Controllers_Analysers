@@ -1,6 +1,6 @@
-﻿# Calibration And Function Profiles
+# Calibration And Function Profiles
 
-Version: `v16.17.260608.0011`
+Version: `v16.21.260630.2340`
 
 This document describes the two transformation layers used by the AFM/KPFM controller: current-intensity calibration and function-profile generation.
 

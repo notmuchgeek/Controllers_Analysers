@@ -1,6 +1,6 @@
-﻿# Developer Guide
+# Developer Guide
 
-Version: `v16.17.260608.0011`
+Version: `v16.21.260630.2340`
 
 This guide is for coding agents and human maintainers.
 
@@ -72,6 +72,16 @@ For any code or documentation implementation from a plan, update:
 - Relevant docs under `docs/en/`
 
 See [Versioning](versioning.md).
+
+## First-Run Dependency Setup
+
+`requirements.txt` is the canonical runtime dependency list for a source checkout.
+`create_ca_app_shortcut.bat` locates a supported Python interpreter and runs the
+standard-library-only `setup_ca_app.py` bootstrap before creating the shortcut.
+The bootstrap checks installed versions and imports, uses compatible files from
+`wheelhouse/` with PyPI fallback, and stores per-interpreter state under the
+user's local application-data folder. Keep bootstrap tests isolated from the
+developer's real Python environment.
 
 ## Raman Electrical Notes
 

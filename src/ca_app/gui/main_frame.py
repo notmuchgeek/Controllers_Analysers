@@ -1,4 +1,4 @@
-﻿"""Main application frame for Controllers & Analysers."""
+"""Main application frame for Controllers & Analysers."""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ from ca_app.runtime.usage_logger import USAGE_LOG_DIRNAME, UsageLogger
 
 WORKSPACE_NAMES = ("AFM/KPFM", "APS", "TPC", "Raman")
 DEFAULT_WORKSPACE = "AFM/KPFM"
-APP_VERSION = "v16.17.260608.0011"
+APP_VERSION = "v16.21.260630.2340"
 APP_TITLE = f"Controller & Analysers {APP_VERSION}"
 STATE_FILENAME = "app_state.json"
 RESTORE_VIEW = "view"
@@ -520,6 +520,12 @@ class CaAppFrame(wx.Frame):
                 selection = int(selection)
             except (TypeError, ValueError):
                 selection = 0
+            saved_pages = notebook_state.get("pages")
+            if isinstance(saved_pages, list) and 0 <= selection < len(saved_pages):
+                selected_page = cls.normalize_tab_page_name(saved_pages[selection])
+                normalized_current = [cls.normalize_tab_page_name(page) for page in page_names]
+                if selected_page in normalized_current:
+                    selection = normalized_current.index(selected_page)
             selection = max(0, min(selection, notebook.GetPageCount() - 1))
             notebook.SetSelection(selection)
         if hasattr(panel, "ensure_active_lazy_pages"):
@@ -641,9 +647,12 @@ class CaAppFrame(wx.Frame):
             "Raman Baseline\n"
             "  - TXT/WDF loading with asPLS, drPLS, and Polynomial/backcor baseline fitting\n"
             "  - Optional WiRE analysed result overlay and corrected TXT export\n\n"
+            "Raman Converting\n"
+            "  - Batch WDF/TXT loading, multi-file preview, and drag reordering\n"
+            "  - Optional baseline correction and individual Origin-friendly TXT export\n\n"
             "Raman Mapping\n"
             "  - WDF/TXT loading, mapping unstacking, Avg./Norm. table preview, and raw/location/selected plots\n"
-            "  - Origin TXT export, selected-sequence TXT export, and in-memory transfer to Insitu EChem\n\n"
+            "  - Combined or one-file-per-spectrum Origin TXT export, selected-sequence export, and transfer to Insitu EChem\n\n"
             "Raman Insitu EChem\n"
             "  - TXT/WDF sequence loading with sequence/time x-axis previews\n"
             "  - Peak position, intensity, normal/inverse ratios, independent legends, and PNG/CSV export\n\n"
@@ -672,7 +681,7 @@ class CaAppFrame(wx.Frame):
             "and analysis workflows.\n\n"
             "Current tools include AFM/KPFM Keithley control and image analysis, APS/DWF/SPV "
             "analysis, TPC laser-diode control, Raman substrate-baseline correction, Raman "
-            "Mapping WDF/TXT processing, Raman Insitu EChem sequence analysis, and Raman "
+            "batch WDF/TXT conversion, Mapping processing, Raman Insitu EChem sequence analysis, and Raman "
             "Electrical CSV preview/classification.\n\n"
             "The Restore menu controls whether the app remembers View, Tab, or Parameters "
             "between launches."

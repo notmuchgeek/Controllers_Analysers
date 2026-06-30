@@ -253,6 +253,68 @@ def export_origin_txt(
     return output_file
 
 
+def format_sequence_filename_label(value: object) -> str:
+    try:
+        number = float(value)
+    except (TypeError, ValueError) as exc:
+        raise RamanMappingError(f"Invalid sequence label for filename: {value!r}.") from exc
+    if not np.isfinite(number):
+        raise RamanMappingError(f"Invalid sequence label for filename: {value!r}.")
+    if np.isclose(number, round(number), rtol=0.0, atol=1e-9):
+        return str(int(round(number)))
+    return f"{number:.6g}"
+
+
+def individual_origin_targets(
+    dataset: RamanDataset,
+    output_dir: str | Path,
+    source_stem: str | None = None,
+) -> list[Path]:
+    output_dir = Path(output_dir)
+    stem = str(source_stem or dataset.source_path.stem).strip()
+    if not stem:
+        raise RamanMappingError("Source filename stem is empty.")
+    sequence = np.asarray(
+        dataset.metadata.get("Sequence", np.arange(1, dataset.n_spectra + 1)),
+    ).ravel()
+    if sequence.size != dataset.n_spectra:
+        raise RamanMappingError("Sequence metadata count does not match the number of spectra.")
+    targets = [output_dir / f"{stem}_sequence_{format_sequence_filename_label(value)}.txt" for value in sequence]
+    names = [path.name.casefold() for path in targets]
+    if len(names) != len(set(names)):
+        raise RamanMappingError("Sequence labels must be unique for individual spectrum export.")
+    return targets
+
+
+def export_origin_spectrum_txt(dataset: RamanDataset, spectrum_index: int, output_file: str | Path) -> Path:
+    spectrum_index = int(spectrum_index)
+    if spectrum_index < 0 or spectrum_index >= dataset.n_spectra:
+        raise RamanMappingError(f"Spectrum index {spectrum_index} is out of range.")
+    output_file = Path(output_file)
+    output_file.parent.mkdir(parents=True, exist_ok=True)
+    with output_file.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.writer(handle, delimiter="\t", lineterminator="\n")
+        writer.writerow(["Wavenumber", "Intensity"])
+        writer.writerow(["cm\\+(-1)", "a.u."])
+        writer.writerows(
+            [f"{float(wave):.6f}", f"{float(intensity):.6f}"]
+            for wave, intensity in zip(dataset.wavenumber, dataset.intensity_matrix[:, spectrum_index])
+        )
+    return output_file
+
+
+def export_individual_origin_txt(
+    dataset: RamanDataset,
+    output_dir: str | Path,
+    source_stem: str | None = None,
+) -> tuple[Path, ...]:
+    targets = individual_origin_targets(dataset, output_dir, source_stem=source_stem)
+    return tuple(
+        export_origin_spectrum_txt(dataset, spectrum_index, target)
+        for spectrum_index, target in enumerate(targets)
+    )
+
+
 def _parse_selected_token(token: str) -> list[int]:
     if "-" not in token:
         try:

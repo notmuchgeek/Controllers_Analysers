@@ -22,9 +22,10 @@ The TPC workspace controls red or green laser-diode current using a Keithley cur
 
 ## Raman
 
-The Raman workspace contains four tabs:
+The Raman workspace contains five tabs:
 
 - `Baseline`: substrate-baseline correction for Raman TXT files.
+- `Converting`: multi-file WDF/TXT preview, optional baseline correction, and individual Origin-friendly TXT export.
 - `Mapping`: WDF/TXT mapping import, unstacking, table preview, selected spectra, and transfer to Insitu EChem.
 - `Insitu EChem`: sequence peak-window analysis and normalized ratios.
 - `Electrical`: electrical CSV preview, V_Gate/V_Drain classification, and V_Gate/I_Drain drain-current preview with gate-pulse spans.

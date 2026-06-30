@@ -55,11 +55,22 @@ from ca_app.core.raman_mapping import (
     RamanDataset,
     RamanMappingError,
     build_unstacked_table,
+    export_origin_spectrum_txt,
+    individual_origin_targets,
     export_origin_txt,
     export_selected_sequence_txt,
     image_from_dataset,
     load_raman_data,
     parse_selected_spectra,
+)
+from ca_app.core.raman_converting import (
+    RamanConversionItem,
+    RamanConvertingError,
+    export_conversion_item,
+    export_targets,
+    item_from_baseline_result,
+    load_conversion_item,
+    unique_item_name,
 )
 from ca_app.core.raman_baseline import (
     ASPLS_K_VALUES,
@@ -109,6 +120,13 @@ def peak_legend_label(value: float) -> str:
     return f"{format_peak_label(value)} cm$^{{-1}}$"
 
 
+def notebook_page_index(notebook, page) -> int:
+    for index in range(notebook.GetPageCount()):
+        if notebook.GetPage(index) is page:
+            return index
+    return wx.NOT_FOUND
+
+
 class RamanAnalysisPanel(wx.Panel):
     def __init__(self, parent):
         super().__init__(parent)
@@ -117,11 +135,13 @@ class RamanAnalysisPanel(wx.Panel):
     def build_ui(self):
         sizer = wx.BoxSizer(wx.VERTICAL)
         self.notebook = wx.Notebook(self)
-        self.substrate_page = RamanSubstrateBaselinePanel(self.notebook)
+        self.substrate_page = RamanSubstrateBaselinePanel(self.notebook, self)
+        self.converting_page = RamanConvertingPanel(self.notebook, self)
         self.insitu_page = RamanInsituEchemPanel(self.notebook)
         self.mapping_page = RamanMappingPanel(self.notebook, self)
         self.electrical_page = RamanElectricalPanel(self.notebook)
         self.notebook.AddPage(self.substrate_page, "Baseline")
+        self.notebook.AddPage(self.converting_page, "Converting")
         self.notebook.AddPage(self.mapping_page, "Mapping")
         self.notebook.AddPage(self.insitu_page, "Insitu EChem")
         self.notebook.AddPage(self.electrical_page, "Electrical")
@@ -147,6 +167,7 @@ class RamanAnalysisPanel(wx.Panel):
     def collect_app_parameters(self):
         return {
             "substrate_baseline": self.substrate_page.collect_app_parameters(),
+            "converting": self.converting_page.collect_app_parameters(),
             "mapping": self.mapping_page.collect_app_parameters(),
             "insitu_echem": self.insitu_page.collect_app_parameters(),
             "electrical": self.electrical_page.collect_app_parameters(),
@@ -157,13 +178,14 @@ class RamanAnalysisPanel(wx.Panel):
             return
         if isinstance(params.get("substrate_baseline"), dict):
             self.substrate_page.apply_app_parameters(params["substrate_baseline"])
+        if isinstance(params.get("converting"), dict):
+            self.converting_page.apply_app_parameters(params["converting"])
         if isinstance(params.get("mapping"), dict):
             self.mapping_page.apply_app_parameters(params["mapping"])
         if isinstance(params.get("insitu_echem"), dict):
             self.insitu_page.apply_app_parameters(params["insitu_echem"])
         if isinstance(params.get("electrical"), dict):
             self.electrical_page.apply_app_parameters(params["electrical"])
-
 
 def create_readonly_grid(parent):
     grid = wxgrid.Grid(parent)
@@ -198,6 +220,504 @@ def populate_grid(grid, headers, rows):
 
 def clear_grid(grid, message):
     populate_grid(grid, ["Preview"], [[message]])
+
+
+class RamanConvertingPanel(wx.Panel):
+    """Batch WDF/TXT conversion and optional baseline correction."""
+
+    def __init__(self, parent, raman_panel):
+        super().__init__(parent)
+        self.raman_panel = raman_panel
+        self.items: list[RamanConversionItem] = []
+        self.correcting = False
+        self.drag_indexes: list[int] = []
+        self.preview_call = None
+        self.refreshing_checks = False
+        self.build_ui()
+
+    def build_ui(self):
+        root = wx.BoxSizer(wx.HORIZONTAL)
+        root.Add(self.build_left_panel(), 0, wx.EXPAND | wx.ALL, 8)
+        root.Add(self.build_right_panel(), 1, wx.EXPAND | wx.TOP | wx.RIGHT | wx.BOTTOM, 8)
+        self.SetSizer(root)
+
+    def build_left_panel(self):
+        scrolled = wx.ScrolledWindow(self, style=wx.VSCROLL)
+        scrolled.SetScrollRate(0, 20)
+        scrolled.SetMinSize((520, -1))
+        root = wx.BoxSizer(wx.VERTICAL)
+
+        load_box = wx.StaticBoxSizer(wx.VERTICAL, scrolled, "Load file")
+        self.load_box = load_box
+        self.btn_load = wx.Button(scrolled, label="Load wdf")
+        self.btn_load.Bind(wx.EVT_BUTTON, self.on_add_files)
+        load_box.Add(self.btn_load, 0, wx.EXPAND | wx.ALL, 5)
+        self.file_list = wx.ListCtrl(scrolled, style=wx.LC_REPORT | wx.LC_HRULES | wx.LC_VRULES)
+        self.file_list.EnableCheckBoxes(True)
+        self.file_list.InsertColumn(0, "File", width=285)
+        self.file_list.InsertColumn(1, "Spectra", width=70)
+        self.file_list.InsertColumn(2, "Type", width=105)
+        self.file_list.SetMinSize((-1, 180))
+        self.file_list.Bind(wx.EVT_LIST_ITEM_SELECTED, self.on_list_selection)
+        self.file_list.Bind(wx.EVT_LIST_ITEM_DESELECTED, self.on_list_selection)
+        self.file_list.Bind(wx.EVT_LIST_ITEM_CHECKED, self.on_preview_check_changed)
+        self.file_list.Bind(wx.EVT_LIST_ITEM_UNCHECKED, self.on_preview_check_changed)
+        self.file_list.Bind(wx.EVT_LIST_BEGIN_DRAG, self.on_begin_drag)
+        self.file_list.Bind(wx.EVT_LEFT_UP, self.on_end_drag)
+        self.file_list.Bind(wx.EVT_KEY_DOWN, self.on_list_key)
+        load_box.Add(self.file_list, 1, wx.EXPAND | wx.LEFT | wx.RIGHT, 5)
+        file_buttons = wx.BoxSizer(wx.HORIZONTAL)
+        self.btn_add = wx.Button(scrolled, label="Add")
+        self.btn_delete = wx.Button(scrolled, label="Delete")
+        self.btn_add.Bind(wx.EVT_BUTTON, self.on_add_files)
+        self.btn_delete.Bind(wx.EVT_BUTTON, self.on_delete)
+        file_buttons.Add(self.btn_add, 1, wx.EXPAND | wx.RIGHT, 5)
+        file_buttons.Add(self.btn_delete, 1, wx.EXPAND)
+        load_box.Add(file_buttons, 0, wx.EXPAND | wx.ALL, 5)
+        root.Add(load_box, 0, wx.EXPAND | wx.ALL, 5)
+
+        preview_box = wx.StaticBoxSizer(wx.VERTICAL, scrolled, "Preview")
+        self.preview_box = preview_box
+        range_row = wx.BoxSizer(wx.HORIZONTAL)
+        self.tc_min = wx.TextCtrl(scrolled, value="0")
+        self.tc_max = wx.TextCtrl(scrolled, value="4000")
+        range_row.Add(wx.StaticText(scrolled, label="Min"), 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 5)
+        range_row.Add(self.tc_min, 1, wx.EXPAND | wx.RIGHT, 10)
+        range_row.Add(wx.StaticText(scrolled, label="Max"), 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 5)
+        range_row.Add(self.tc_max, 1, wx.EXPAND)
+        for control in (self.tc_min, self.tc_max):
+            control.Bind(wx.EVT_TEXT, self.on_preview_text)
+        preview_box.Add(range_row, 0, wx.EXPAND | wx.ALL, 5)
+        root.Add(preview_box, 0, wx.EXPAND | wx.ALL, 5)
+
+        baseline_box = wx.StaticBoxSizer(wx.VERTICAL, scrolled, "Baseline")
+        self.baseline_box = baseline_box
+        method_grid = wx.FlexGridSizer(rows=1, cols=2, vgap=6, hgap=6)
+        method_grid.AddGrowableCol(1, 1)
+        self.choice_method = wx.Choice(scrolled, choices=[METHOD_ASPLS, METHOD_DRPLS, METHOD_BACKCOR])
+        self.choice_method.SetStringSelection(METHOD_ASPLS)
+        self.choice_method.Bind(wx.EVT_CHOICE, self.on_baseline_control_changed)
+        method_grid.Add(wx.StaticText(scrolled, label="Fitting method"), 0, wx.ALIGN_CENTER_VERTICAL)
+        method_grid.Add(self.choice_method, 0, wx.EXPAND)
+        baseline_box.Add(method_grid, 0, wx.EXPAND | wx.ALL, 5)
+        mode_row = wx.BoxSizer(wx.HORIZONTAL)
+        self.rb_auto = wx.RadioButton(scrolled, label="Auto", style=wx.RB_GROUP)
+        self.rb_manual = wx.RadioButton(scrolled, label="Manual")
+        self.rb_auto.SetValue(True)
+        self.rb_auto.Bind(wx.EVT_RADIOBUTTON, self.on_baseline_control_changed)
+        self.rb_manual.Bind(wx.EVT_RADIOBUTTON, self.on_baseline_control_changed)
+        mode_row.Add(wx.StaticText(scrolled, label="Parameter mode"), 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 12)
+        mode_row.Add(self.rb_auto, 0, wx.RIGHT, 16)
+        mode_row.Add(self.rb_manual)
+        baseline_box.Add(mode_row, 0, wx.EXPAND | wx.ALL, 5)
+        params = wx.FlexGridSizer(rows=3, cols=2, vgap=6, hgap=6)
+        params.AddGrowableCol(1, 1)
+        self.lbl_param1, self.lbl_param2, self.lbl_param3 = (wx.StaticText(scrolled) for _ in range(3))
+        self.tc_param1, self.tc_param2, self.tc_param3 = (wx.TextCtrl(scrolled) for _ in range(3))
+        for label, control in zip(
+            (self.lbl_param1, self.lbl_param2, self.lbl_param3),
+            (self.tc_param1, self.tc_param2, self.tc_param3),
+        ):
+            params.Add(label, 0, wx.ALIGN_CENTER_VERTICAL)
+            params.Add(control, 0, wx.EXPAND)
+        baseline_box.Add(params, 0, wx.EXPAND | wx.ALL, 5)
+        self.btn_load_baseline = wx.Button(scrolled, label="Load to Baseline")
+        self.btn_correct = wx.Button(scrolled, label="Correct Baseline")
+        self.btn_load_baseline.Bind(wx.EVT_BUTTON, self.on_load_to_baseline)
+        self.btn_correct.Bind(wx.EVT_BUTTON, self.on_correct_baseline)
+        baseline_box.Add(self.btn_load_baseline, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 5)
+        baseline_box.Add(self.btn_correct, 0, wx.EXPAND | wx.ALL, 5)
+        root.Add(baseline_box, 0, wx.EXPAND | wx.ALL, 5)
+
+        export_box = wx.StaticBoxSizer(wx.VERTICAL, scrolled, "Export")
+        self.btn_export = wx.Button(scrolled, label="Export All")
+        self.btn_export.Bind(wx.EVT_BUTTON, self.on_export_all)
+        export_box.Add(self.btn_export, 0, wx.EXPAND | wx.ALL, 5)
+        root.Add(export_box, 0, wx.EXPAND | wx.ALL, 5)
+        scrolled.SetSizer(root)
+        self.update_parameter_controls()
+        self.update_buttons()
+        return scrolled
+
+    def build_right_panel(self):
+        panel = wx.Panel(self)
+        sizer = wx.BoxSizer(wx.VERTICAL)
+        self.figure = Figure(figsize=(8, 7))
+        self.canvas = FigureCanvasWxAgg(panel, -1, self.figure)
+        sizer.Add(self.canvas, 1, wx.EXPAND)
+        log_box = wx.StaticBoxSizer(wx.VERTICAL, panel, "Converting log")
+        self.log_box = wx.TextCtrl(panel, style=wx.TE_MULTILINE | wx.TE_READONLY | wx.TE_RICH2)
+        self.log_box.SetMinSize((-1, 105))
+        log_box.Add(self.log_box, 0, wx.EXPAND | wx.ALL, 6)
+        sizer.Add(log_box, 0, wx.EXPAND | wx.TOP, 6)
+        panel.SetSizer(sizer)
+        self.clear_preview()
+        return panel
+
+    def on_add_files(self, event):
+        with wx.FileDialog(
+            self,
+            "Load Raman WDF/TXT files",
+            wildcard="Raman files (*.wdf;*.txt)|*.wdf;*.txt|WDF files (*.wdf)|*.wdf|Text files (*.txt)|*.txt",
+            style=wx.FD_OPEN | wx.FD_FILE_MUST_EXIST | wx.FD_MULTIPLE,
+        ) as dialog:
+            if dialog.ShowModal() != wx.ID_OK:
+                return
+            paths = dialog.GetPaths()
+        self.add_paths(paths)
+
+    def add_paths(self, paths, restoring=False):
+        start_index = len(self.items)
+        loaded = 0
+        for path in paths:
+            try:
+                name = unique_item_name(Path(path).name, [item.display_name for item in self.items])
+                self.items.append(load_conversion_item(path, display_name=name))
+                loaded += 1
+                self.log(f"Loaded {Path(path).name}.")
+            except Exception as exc:
+                self.log(f"Could not load {Path(path).name}: {exc}")
+        if loaded:
+            selected = [] if restoring else list(range(start_index, len(self.items)))
+            self.refresh_file_list(selected=selected)
+            if not restoring:
+                log_usage_event(self, "raman_converting_loaded", {"files": loaded})
+
+    def refresh_file_list(self, selected=None):
+        if selected is None:
+            selected = []
+        self.file_list.Freeze()
+        self.file_list.DeleteAllItems()
+        for index, item in enumerate(self.items):
+            row = self.file_list.InsertItem(index, item.display_name)
+            self.file_list.SetItem(row, 1, str(item.dataset.n_spectra))
+            self.file_list.SetItem(row, 2, "Baselined" if item.derived else item.source_path.suffix.lstrip(".").upper())
+            self.file_list.SetItemData(row, index)
+        self.refreshing_checks = True
+        try:
+            for index, item in enumerate(self.items):
+                self.file_list.CheckItem(index, bool(item.preview_enabled))
+        finally:
+            self.refreshing_checks = False
+        for index in selected:
+            if 0 <= index < len(self.items):
+                self.file_list.SetItemState(index, wx.LIST_STATE_SELECTED, wx.LIST_STATE_SELECTED)
+        self.file_list.Thaw()
+        self.update_buttons()
+        self.draw_preview()
+
+    def selected_indexes(self):
+        indexes = []
+        index = self.file_list.GetFirstSelected()
+        while index != -1:
+            indexes.append(index)
+            index = self.file_list.GetNextSelected(index)
+        return indexes
+
+    def on_list_selection(self, event):
+        self.update_buttons()
+        event.Skip()
+
+    def on_preview_check_changed(self, event):
+        index = event.GetIndex()
+        if self.refreshing_checks or not 0 <= index < len(self.items):
+            event.Skip()
+            return
+        checked = bool(self.file_list.IsItemChecked(index))
+        if self.items[index].preview_enabled == checked:
+            event.Skip()
+            return
+        selected = self.selected_indexes()
+        targets = selected if index in selected and len(selected) > 1 else [index]
+        self.refreshing_checks = True
+        try:
+            for target in targets:
+                self.items[target].preview_enabled = checked
+                if self.file_list.IsItemChecked(target) != checked:
+                    self.file_list.CheckItem(target, checked)
+        finally:
+            self.refreshing_checks = False
+        self.draw_preview()
+        event.Skip()
+
+    def on_list_key(self, event):
+        if event.GetKeyCode() == wx.WXK_DELETE:
+            self.on_delete(None)
+            return
+        event.Skip()
+
+    def on_delete(self, event):
+        selected = self.selected_indexes()
+        for index in reversed(selected):
+            del self.items[index]
+        if selected:
+            self.refresh_file_list()
+
+    def on_begin_drag(self, event):
+        self.drag_indexes = self.selected_indexes() or [event.GetIndex()]
+        self.file_list.SetCursor(wx.Cursor(wx.CURSOR_HAND))
+        if not self.file_list.HasCapture():
+            self.file_list.CaptureMouse()
+
+    def on_end_drag(self, event):
+        if not self.drag_indexes:
+            event.Skip()
+            return
+        target, _flags = self.file_list.HitTest(event.GetPosition())
+        moving = [self.items[index] for index in self.drag_indexes]
+        remaining = [item for index, item in enumerate(self.items) if index not in self.drag_indexes]
+        if target == wx.NOT_FOUND:
+            insert_at = len(remaining)
+        else:
+            insert_at = sum(1 for index in range(target) if index not in self.drag_indexes)
+        self.items = remaining[:insert_at] + moving + remaining[insert_at:]
+        selected = list(range(insert_at, insert_at + len(moving)))
+        self.drag_indexes = []
+        if self.file_list.HasCapture():
+            self.file_list.ReleaseMouse()
+        self.file_list.SetCursor(wx.NullCursor)
+        self.refresh_file_list(selected=selected)
+
+    def on_preview_text(self, event):
+        if self.preview_call is not None and self.preview_call.IsRunning():
+            self.preview_call.Stop()
+        self.preview_call = wx.CallLater(250, self.draw_preview)
+        event.Skip()
+
+    def preview_range(self):
+        try:
+            low = float(self.tc_min.GetValue().strip())
+            high = float(self.tc_max.GetValue().strip())
+        except ValueError as exc:
+            raise RamanConvertingError("Preview Min and Max must be numbers.") from exc
+        if not np.isfinite(low) or not np.isfinite(high) or low >= high:
+            raise RamanConvertingError("Preview Min must be less than Max.")
+        return low, high
+
+    def draw_preview(self):
+        preview_indexes = [index for index, item in enumerate(self.items) if item.preview_enabled]
+        if not preview_indexes:
+            self.clear_preview()
+            return
+        try:
+            low, high = self.preview_range()
+        except RamanConvertingError as exc:
+            self.log(f"Preview update warning: {exc}")
+            return
+        self.figure.clear()
+        ax = self.figure.add_subplot(111)
+        plotted = 0
+        for item_index in preview_indexes:
+            item = self.items[item_index]
+            mask = (item.dataset.wavenumber >= low) & (item.dataset.wavenumber <= high)
+            for spectrum_index in range(item.dataset.n_spectra):
+                label = item.display_name if item.dataset.n_spectra == 1 else f"{item.display_name}:{spectrum_index + 1}"
+                ax.plot(item.dataset.wavenumber[mask], item.dataset.intensity_matrix[mask, spectrum_index], label=label, linewidth=0.9)
+                plotted += 1
+        ax.set_title("Selected Raman Spectra")
+        ax.set_xlabel("Raman shift (cm$^{-1}$)")
+        ax.set_ylabel("Intensity")
+        ax.grid(True, alpha=0.3)
+        ax.set_xlim(low, high)
+        if plotted <= 20:
+            ax.legend(fontsize=7, ncol=2)
+        self.figure.tight_layout(pad=1.2)
+        self.canvas.draw()
+
+    def clear_preview(self):
+        self.figure.clear()
+        ax = self.figure.add_subplot(111)
+        ax.text(0.5, 0.5, "Tick one or more files to preview their spectra.", ha="center", va="center", transform=ax.transAxes)
+        ax.set_axis_off()
+        self.canvas.draw()
+
+    def on_baseline_control_changed(self, event):
+        self.update_parameter_controls()
+        event.Skip()
+
+    def update_parameter_controls(self, preserve=False):
+        method = self.choice_method.GetStringSelection() or METHOD_ASPLS
+        auto = self.rb_auto.GetValue()
+        old = (self.tc_param1.GetValue(), self.tc_param2.GetValue(), self.tc_param3.GetValue()) if preserve else None
+        if method == METHOD_BACKCOR:
+            self.lbl_param1.SetLabel("Orders" if auto else "Order")
+            self.lbl_param2.SetLabel("Thresholds" if auto else "Threshold")
+            self.lbl_param3.SetLabel("Below-baseline fraction")
+            self.tc_param1.SetValue(RamanSubstrateBaselinePanel.format_values(BACKCOR_ORDER_VALUES) if auto else "4")
+            self.tc_param2.SetValue(RamanSubstrateBaselinePanel.format_values(BACKCOR_THRESHOLD_VALUES) if auto else "0.01")
+            self.tc_param3.SetValue(f"{DEFAULT_BACKCOR_BELOW_BASELINE_FRACTION:g}")
+        else:
+            secondary = "eta" if method == METHOD_DRPLS else "k"
+            self.lbl_param1.SetLabel("lambda values" if auto else "lambda")
+            self.lbl_param2.SetLabel(f"{secondary} values" if auto else secondary)
+            lambdas = ASPLS_LAMBDA_VALUES if method == METHOD_ASPLS else DRPLS_LAMBDA_VALUES
+            values = ASPLS_K_VALUES if method == METHOD_ASPLS else DRPLS_ETA_VALUES
+            self.tc_param1.SetValue(RamanSubstrateBaselinePanel.format_values(lambdas) if auto else ("1e6" if method == METHOD_ASPLS else "1e5"))
+            self.tc_param2.SetValue(RamanSubstrateBaselinePanel.format_values(values) if auto else ("1.0" if method == METHOD_ASPLS else "0.1"))
+        self.lbl_param3.Show(method == METHOD_BACKCOR)
+        self.tc_param3.Show(method == METHOD_BACKCOR)
+        if old is not None:
+            self.tc_param1.SetValue(old[0])
+            self.tc_param2.SetValue(old[1])
+            self.tc_param3.SetValue(old[2])
+        self.Layout()
+
+    def read_settings(self):
+        method = self.choice_method.GetStringSelection()
+        auto = self.rb_auto.GetValue()
+        if method == METHOD_BACKCOR:
+            fraction = RamanSubstrateBaselinePanel.parse_single_float(self.tc_param3.GetValue(), "Below-baseline fraction")
+            if auto:
+                return RamanBaselineSettings(method=method, auto=True, order_values=RamanSubstrateBaselinePanel.parse_int_list(self.tc_param1.GetValue(), "Orders"), threshold_values=parse_numeric_list(self.tc_param2.GetValue(), "Thresholds"), below_baseline_fraction=fraction)
+            return RamanBaselineSettings(method=method, auto=False, order_value=RamanSubstrateBaselinePanel.parse_single_int(self.tc_param1.GetValue(), "Order"), threshold_value=RamanSubstrateBaselinePanel.parse_single_float(self.tc_param2.GetValue(), "Threshold"), below_baseline_fraction=fraction)
+        if auto:
+            secondary = "eta values" if method == METHOD_DRPLS else "k values"
+            return RamanBaselineSettings(method=method, auto=True, lambda_values=parse_numeric_list(self.tc_param1.GetValue(), "lambda values"), secondary_values=parse_numeric_list(self.tc_param2.GetValue(), secondary))
+        return RamanBaselineSettings(method=method, auto=False, lambda_value=RamanSubstrateBaselinePanel.parse_single_float(self.tc_param1.GetValue(), "lambda"), secondary_value=RamanSubstrateBaselinePanel.parse_single_float(self.tc_param2.GetValue(), "eta" if method == METHOD_DRPLS else "k"))
+
+    def settings_values(self):
+        return {
+            "method": self.choice_method.GetStringSelection(), "auto": self.rb_auto.GetValue(),
+            "param1": self.tc_param1.GetValue(), "param2": self.tc_param2.GetValue(), "param3": self.tc_param3.GetValue(),
+        }
+
+    def apply_settings_values(self, values):
+        method = str(values.get("method", METHOD_ASPLS))
+        if self.choice_method.FindString(method) == wx.NOT_FOUND:
+            method = METHOD_ASPLS
+        self.choice_method.SetStringSelection(method)
+        auto = bool(values.get("auto", True))
+        self.rb_auto.SetValue(auto)
+        self.rb_manual.SetValue(not auto)
+        self.update_parameter_controls()
+        self.tc_param1.SetValue(str(values.get("param1", self.tc_param1.GetValue())))
+        self.tc_param2.SetValue(str(values.get("param2", self.tc_param2.GetValue())))
+        self.tc_param3.SetValue(str(values.get("param3", self.tc_param3.GetValue())))
+
+    def on_load_to_baseline(self, event):
+        selected = self.selected_indexes()
+        if len(selected) != 1:
+            self.show_warning("Select exactly one file to load into Baseline.")
+            return
+        baseline = self.raman_panel.substrate_page
+        baseline.apply_baseline_settings_values(self.settings_values())
+        baseline.load_baseline_input(self.items[selected[0]].baseline_input, source_label=self.items[selected[0]].display_name)
+        self.raman_panel.notebook.SetSelection(notebook_page_index(self.raman_panel.notebook, baseline))
+        self.log(f"Loaded {self.items[selected[0]].display_name} to Baseline.")
+
+    def on_correct_baseline(self, event):
+        selected = self.selected_indexes()
+        if not selected:
+            self.show_warning("Select one or more files to correct.")
+            return
+        if self.correcting:
+            return
+        try:
+            settings = self.read_settings()
+        except Exception as exc:
+            self.show_warning(str(exc))
+            return
+        sources = [self.items[index] for index in selected]
+        self.correcting = True
+        self.update_buttons()
+        self.log(f"Starting baseline correction for {len(sources)} file(s).")
+        log_usage_event(self, "raman_converting_baseline_started", {"files": len(sources), "method": settings.method})
+        threading.Thread(target=self.correct_worker, args=(sources, settings), daemon=True).start()
+
+    def correct_worker(self, sources, settings):
+        results = []
+        failures = []
+        for item in sources:
+            try:
+                results.append((item, fit_raman_baseline_input(item.baseline_input, settings)))
+            except Exception as exc:
+                failures.append((item.display_name, str(exc)))
+        wx.CallAfter(self.on_correct_finished, results, failures)
+
+    def on_correct_finished(self, results, failures):
+        start_index = len(self.items)
+        existing = [item.display_name for item in self.items]
+        for source, result in results:
+            name = unique_item_name(f"{source.export_stem}_baselined.txt", existing)
+            self.items.append(item_from_baseline_result(source, result, name))
+            existing.append(name)
+            self.log(f"Added baseline-corrected item: {name}.")
+        for name, message in failures:
+            self.log(f"Baseline correction failed for {name}: {message}")
+        self.correcting = False
+        self.refresh_file_list(selected=list(range(start_index, len(self.items))))
+        log_usage_event(self, "raman_converting_baseline_finished", {"succeeded": len(results), "failed": len(failures)})
+
+    def on_export_all(self, event):
+        if not self.items:
+            self.show_warning("Load at least one file before exporting.")
+            return
+        with wx.DirDialog(self, "Choose folder for converted TXT files", style=wx.DD_DEFAULT_STYLE | wx.DD_DIR_MUST_EXIST) as dialog:
+            if dialog.ShowModal() != wx.ID_OK:
+                return
+            output_dir = Path(dialog.GetPath())
+        targets = export_targets(self.items, output_dir)
+        existing = [path for path in targets if path.exists()]
+        if existing:
+            answer = wx.MessageBox(
+                f"{len(existing)} output file(s) already exist. Overwrite them?",
+                "Confirm overwrite", wx.YES_NO | wx.CANCEL | wx.ICON_WARNING, self,
+            )
+            if answer != wx.YES:
+                return
+        succeeded = 0
+        failed = 0
+        for item, target in zip(self.items, targets):
+            try:
+                export_conversion_item(item, target)
+                succeeded += 1
+                self.log(f"Exported {target.name}.")
+            except Exception as exc:
+                failed += 1
+                self.log(f"Could not export {target.name}: {exc}")
+        self.log(f"Export complete: {succeeded} succeeded, {failed} failed.")
+        log_usage_event(self, "raman_converting_exported", {"succeeded": succeeded, "failed": failed})
+
+    def update_buttons(self):
+        selected = len(self.selected_indexes()) if hasattr(self, "file_list") else 0
+        enabled = not self.correcting
+        self.btn_load.Enable(enabled)
+        self.btn_add.Enable(enabled)
+        self.btn_delete.Enable(enabled and selected > 0)
+        self.btn_load_baseline.Enable(enabled and selected == 1)
+        self.btn_correct.Enable(enabled and selected > 0)
+        self.btn_export.Enable(enabled and bool(self.items))
+
+    def collect_app_parameters(self):
+        source_items = [item for item in self.items if not item.derived]
+        return {
+            "source_paths": [str(item.source_path) for item in source_items],
+            "source_preview_enabled": [bool(item.preview_enabled) for item in source_items],
+            "preview_min": self.tc_min.GetValue(), "preview_max": self.tc_max.GetValue(),
+            **self.settings_values(),
+        }
+
+    def apply_app_parameters(self, params):
+        if not isinstance(params, dict):
+            return
+        self.apply_settings_values(params)
+        self.items = []
+        paths = [str(path) for path in params.get("source_paths", []) if str(path)]
+        self.add_paths(paths, restoring=True)
+        preview_states = params.get("source_preview_enabled")
+        if isinstance(preview_states, list):
+            for item, enabled in zip(self.items, preview_states):
+                item.preview_enabled = bool(enabled)
+        self.tc_min.ChangeValue(str(params.get("preview_min", self.tc_min.GetValue())))
+        self.tc_max.ChangeValue(str(params.get("preview_max", self.tc_max.GetValue())))
+        self.refresh_file_list()
+
+    def show_warning(self, message):
+        wx.MessageBox(message, "Converting warning", wx.OK | wx.ICON_WARNING, self)
+
+    def log(self, message):
+        stamp = datetime.now().strftime("%H:%M:%S")
+        self.log_box.AppendText(f"[{stamp}] {message}\n")
 
 
 class RamanMappingPanel(wx.Panel):
@@ -262,6 +782,10 @@ class RamanMappingPanel(wx.Panel):
         self.btn_save_origin.Disable()
         self.btn_save_origin.Bind(wx.EVT_BUTTON, self.on_save_origin)
         averaging_box.Add(self.btn_save_origin, 0, wx.EXPAND | wx.ALL, 5)
+        self.btn_save_each_origin = wx.Button(scrolled, label="Save one for each")
+        self.btn_save_each_origin.Disable()
+        self.btn_save_each_origin.Bind(wx.EVT_BUTTON, self.on_save_one_for_each)
+        averaging_box.Add(self.btn_save_each_origin, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 5)
         sizer.Add(averaging_box, 0, wx.EXPAND | wx.ALL, 5)
 
         select_box = wx.StaticBoxSizer(wx.VERTICAL, scrolled, "Mapping & Selecting")
@@ -491,6 +1015,7 @@ class RamanMappingPanel(wx.Panel):
     def update_buttons(self):
         enabled = self.dataset is not None
         self.btn_save_origin.Enable(enabled)
+        self.btn_save_each_origin.Enable(enabled)
         self.btn_save_selected.Enable(enabled)
         self.btn_load_to_insitu.Enable(enabled)
         self.update_legend_control()
@@ -687,6 +1212,53 @@ class RamanMappingPanel(wx.Panel):
         self.log(f"Saved Origin-friendly Mapping TXT: {saved}")
         log_usage_event(self, "raman_mapping_origin_saved", file_metadata(saved))
 
+    def on_save_one_for_each(self, event):
+        if self.dataset is None:
+            self.show_warning("Load a Raman Mapping file before saving individual spectra.")
+            return
+        with wx.DirDialog(
+            self,
+            "Choose folder for individual Mapping TXT files",
+            defaultPath=str(Path(self.raw_path).parent),
+            style=wx.DD_DEFAULT_STYLE | wx.DD_DIR_MUST_EXIST,
+        ) as dialog:
+            if dialog.ShowModal() != wx.ID_OK:
+                return
+            output_dir = Path(dialog.GetPath())
+        try:
+            targets = individual_origin_targets(self.dataset, output_dir, source_stem=Path(self.raw_path).stem)
+        except Exception as exc:
+            self.show_warning(str(exc))
+            return
+        existing = [path for path in targets if path.exists()]
+        if existing:
+            answer = wx.MessageBox(
+                f"{len(existing)} individual spectrum file(s) already exist. Overwrite them?",
+                "Confirm overwrite",
+                wx.YES_NO | wx.CANCEL | wx.ICON_WARNING,
+                self,
+            )
+            if answer != wx.YES:
+                return
+        succeeded, failed = self.save_one_for_each_to_folder(targets)
+        self.log(f"Individual spectrum export complete: {succeeded} succeeded, {failed} failed.")
+        log_usage_event(self, "raman_mapping_individual_saved", {"succeeded": succeeded, "failed": failed})
+
+    def save_one_for_each_to_folder(self, targets):
+        if self.dataset is None:
+            raise RamanMappingError("Load a Raman Mapping file before saving individual spectra.")
+        succeeded = 0
+        failed = 0
+        for spectrum_index, target in enumerate(targets):
+            try:
+                export_origin_spectrum_txt(self.dataset, spectrum_index, target)
+                succeeded += 1
+                self.log(f"Saved individual spectrum TXT: {target}")
+            except Exception as exc:
+                failed += 1
+                self.log(f"Could not save individual spectrum {spectrum_index + 1}: {exc}")
+        return succeeded, failed
+
     def on_save_selected(self, event):
         if self.dataset is None:
             self.show_warning("Load a Raman Mapping file before saving selected spectra.")
@@ -721,7 +1293,7 @@ class RamanMappingPanel(wx.Panel):
             self.show_warning(str(exc))
             return
         self.raman_panel.insitu_page.load_sequence_data(data, source_label=f"Mapping: {Path(self.raw_path).name}")
-        self.raman_panel.notebook.SetSelection(2)
+        self.raman_panel.notebook.SetSelection(notebook_page_index(self.raman_panel.notebook, self.raman_panel.insitu_page))
         self.log("Loaded selected Mapping spectra into Insitu EChem in memory.")
         log_usage_event(self, "raman_mapping_loaded_to_insitu", {"selected_spectra": len(data.sequence_values)})
 
@@ -2061,8 +2633,9 @@ class RamanInsituEchemPanel(wx.Panel):
 
 
 class RamanSubstrateBaselinePanel(wx.Panel):
-    def __init__(self, parent):
+    def __init__(self, parent, raman_panel):
         super().__init__(parent)
+        self.raman_panel = raman_panel
         self.raw_path = ""
         self.raw_input: RamanBaselineInput | None = None
         self.raw_spectrum = None
@@ -2140,9 +2713,14 @@ class RamanSubstrateBaselinePanel(wx.Panel):
         param_grid.Add(self.tc_param3, 0, wx.EXPAND | wx.ALIGN_CENTER_VERTICAL)
         fitting_box.Add(param_grid, 0, wx.EXPAND | wx.ALL, 5)
 
+        fit_row = wx.BoxSizer(wx.HORIZONTAL)
         self.btn_fit = wx.Button(scrolled, label="Fit")
+        self.btn_send_params = wx.Button(scrolled, label="Send params to Converting")
         self.btn_fit.Bind(wx.EVT_BUTTON, self.on_fit)
-        fitting_box.Add(self.btn_fit, 0, wx.EXPAND | wx.ALL, 5)
+        self.btn_send_params.Bind(wx.EVT_BUTTON, self.on_send_params_to_converting)
+        fit_row.Add(self.btn_fit, 1, wx.EXPAND | wx.RIGHT, 5)
+        fit_row.Add(self.btn_send_params, 1, wx.EXPAND)
+        fitting_box.Add(fit_row, 0, wx.EXPAND | wx.ALL, 5)
         root.Add(fitting_box, 0, wx.EXPAND | wx.ALL, 5)
 
         save_box = wx.StaticBoxSizer(wx.VERTICAL, scrolled, "Save")
@@ -2210,23 +2788,43 @@ class RamanSubstrateBaselinePanel(wx.Panel):
             return
         path = paths[0]
         try:
-            self.raw_input = read_raman_baseline_input(path)
+            source = read_raman_baseline_input(path)
         except Exception as exc:
             self.show_warning(str(exc))
             return
-        self.raw_spectrum = self.raw_input.spectra[0]
-        self.raw_path = path
+        self.load_baseline_input(source, source_label=Path(path).name)
+
+    def load_baseline_input(self, source, source_label=None):
+        """Load an already parsed source, including in-memory Converting data."""
+        self.raw_input = source
+        self.raw_spectrum = source.spectra[0]
+        self.raw_path = str(source.source_path)
         self.batch_result = None
         self.result = None
-        self.lbl_raw.SetValue(Path(path).name)
-        self.tc_output_name.SetValue(default_output_name(path))
+        label = source_label or source.source_path.name
+        self.lbl_raw.SetValue(label)
+        self.lbl_raw.SetToolTip(str(source.source_path))
+        self.tc_output_name.SetValue(default_output_name(label))
         self.btn_save.Disable()
         self.update_preview_selection_controls()
         self.draw_loaded_raw()
-        self.log(f"Loaded Raman file: {Path(path).name}; {self.raw_input.n_spectra} spectrum/spectra.")
-        log_usage_event(self, "raman_baseline_raw_loaded", {"spectra": self.raw_input.n_spectra, **file_metadata(path)})
+        self.log(f"Loaded Raman file: {label}; {self.raw_input.n_spectra} spectrum/spectra.")
+        log_usage_event(self, "raman_baseline_raw_loaded", {"spectra": self.raw_input.n_spectra, **file_metadata(source.source_path)})
         if self.rb_auto.GetValue():
             self.start_fit("Auto fitting after Raman file load.")
+
+    def apply_baseline_settings_values(self, values):
+        method = str(values.get("method", METHOD_ASPLS))
+        if self.choice_method.FindString(method) == wx.NOT_FOUND:
+            method = METHOD_ASPLS
+        self.choice_method.SetStringSelection(method)
+        auto = bool(values.get("auto", True))
+        self.rb_auto.SetValue(auto)
+        self.rb_manual.SetValue(not auto)
+        self.update_parameter_controls()
+        self.tc_param1.SetValue(str(values.get("param1", self.tc_param1.GetValue())))
+        self.tc_param2.SetValue(str(values.get("param2", self.tc_param2.GetValue())))
+        self.tc_param3.SetValue(str(values.get("param3", self.tc_param3.GetValue())))
 
     def on_load_wire(self, event):
         paths = self.open_txt_file("Load fitted result")
@@ -2285,6 +2883,26 @@ class RamanSubstrateBaselinePanel(wx.Panel):
 
     def on_fit(self, event):
         self.start_fit("Starting Raman baseline fit.")
+
+    def on_send_params_to_converting(self, event):
+        try:
+            self.read_settings()
+        except Exception as exc:
+            self.show_warning(str(exc))
+            return
+        values = {
+            "method": self.choice_method.GetStringSelection(),
+            "auto": self.rb_auto.GetValue(),
+            "param1": self.tc_param1.GetValue(),
+            "param2": self.tc_param2.GetValue(),
+            "param3": self.tc_param3.GetValue(),
+        }
+        self.raman_panel.converting_page.apply_settings_values(values)
+        self.log("Sent fitting parameters to Converting.")
+        self.raman_panel.converting_page.log("Received fitting parameters from Baseline.")
+        self.raman_panel.notebook.SetSelection(
+            notebook_page_index(self.raman_panel.notebook, self.raman_panel.converting_page)
+        )
 
     def start_fit(self, message):
         if self.fit_running:
@@ -2509,6 +3127,7 @@ class RamanSubstrateBaselinePanel(wx.Panel):
         self.btn_load_raw.Enable(enabled)
         self.btn_load_wire.Enable(enabled)
         self.btn_fit.Enable(enabled)
+        self.btn_send_params.Enable(enabled)
         self.btn_save.Enable(enabled and self.batch_result is not None)
         self.update_preview_selection_controls()
 

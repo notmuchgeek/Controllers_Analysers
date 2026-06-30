@@ -1,6 +1,6 @@
-﻿# Module Map
+# Module Map
 
-Version: `v16.17.260608.0011`
+Version: `v16.21.260630.2340`
 
 This map describes the project from the top layer to the lower implementation layers.
 
@@ -11,6 +11,17 @@ run_ca_app.py
 ```
 
 Starts the wxPython application from a source checkout.
+
+```text
+create_ca_app_shortcut.bat
+setup_ca_app.py
+requirements.txt
+wheelhouse/
+```
+
+Discovers the selected Python interpreter, verifies or installs runtime
+dependencies, records successful per-interpreter setup outside the project
+folder, and creates the Windows shortcut.
 
 ```text
 pyproject.toml
@@ -84,7 +95,7 @@ APS, DWF, DOS, SPV, and workfunction analysis.
 src/ca_app/gui/panels/raman_panel.py
 ```
 
-Raman Baseline, Mapping, Insitu EChem, and Electrical workspaces.
+Raman Baseline, Converting, Mapping, Insitu EChem, and Electrical workspaces.
 
 ```text
 src/ca_app/gui/panels/tpc_panel.py
@@ -112,6 +123,12 @@ src/ca_app/core/raman_baseline.py
 ```
 
 Raman TXT import and baseline correction.
+
+```text
+src/ca_app/core/raman_converting.py
+```
+
+Batch WDF/TXT conversion items, baseline-result conversion, naming, and Origin TXT export.
 
 ```text
 src/ca_app/core/raman_mapping.py

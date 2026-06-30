@@ -1,6 +1,6 @@
 ﻿# Raman Workflows
 
-The Raman workspace is implemented in one wx panel module, `raman_panel.py`, with separate classes for Mapping, Electrical, Insitu EChem, and Baseline. Core logic lives in dedicated modules.
+The Raman workspace is implemented in one wx panel module, `raman_panel.py`, with separate classes for Baseline, Converting, Mapping, Insitu EChem, and Electrical. Core logic lives in dedicated modules.
 
 ## Baseline
 
@@ -9,6 +9,14 @@ Raman Baseline reads single-spectrum TXT/WDF files and multi-spectrum TXT/WDF fi
 Raman spectrum preview axes display from smaller wavenumbers on the left to larger wavenumbers on the right, even when input files store wavenumbers in descending order.
 
 Multi-spectrum TXT inputs may use `#Time/#Wave/#Intensity`, `#Sequence/#Wave/#Intensity`, or Origin-style wide data. The Baseline section's `Selected columns` field controls preview spectra only and requires `Update`; fitting and saving process every spectrum. Save output follows the loaded logical format.
+
+## Converting
+
+Raman Converting batch-loads WDF and TXT files into a Ctrl/Shift multi-select list. Every new entry is checked by default, and checked files are overlaid in the overview independently of row selection. Checking or unchecking one selected row applies the same preview state to all selected rows. List entries can be deleted or drag-reordered, while typed Min/Max fields limit the Raman-shift preview range and remain unchanged when more files are loaded.
+
+`Load to Baseline` transfers one selected item in memory for parameter checking. Baseline settings return only through `Send params to Converting`, which validates the visible settings and opens Converting. Ordinary tab changes do not synchronize settings. `Correct Baseline` processes every spectrum in every selected file and adds separate checked `_baselined` list entries without replacing the originals.
+
+`Export All` chooses one folder and writes every list entry as an individual Origin-friendly TXT containing wavenumber and raw spectrum columns. WDF inputs become `.txt`; corrected entries use `_baselined.txt`. Duplicate output names receive numeric suffixes.
 
 ## Mapping
 
@@ -19,6 +27,8 @@ Selected spectra use 1-based labels and must preserve their original sequence nu
 The `Legend` checkbox in the Load file section is available for `Every N = 1` and affects only the `Raw data` preview.
 
 The Save file section can include or exclude averaged and normalised columns. Origin TXT exports use repeated `Intensity` long names, `cm\+(-1)` as the wavenumber unit, and `Sequence N` labels in the third header row.
+
+`Save one for each` chooses one folder and exports every raw spectrum separately as `<source_stem>_sequence_<sequence>.txt`. Each output has only `Wavenumber`/`Intensity` names, `cm\+(-1)`/`a.u.` units, and two-column data; it omits the redundant sequence header row and all averaged/normalised values.
 
 ## Insitu EChem
 

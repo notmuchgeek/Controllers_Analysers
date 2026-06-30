@@ -262,16 +262,29 @@ class RamanInsituEchemGuiTests(unittest.TestCase):
 
             self.assertEqual(
                 [panel.notebook.GetPageText(index) for index in range(panel.notebook.GetPageCount())],
-                ["Baseline", "Mapping", "Insitu EChem", "Electrical"],
+                ["Baseline", "Converting", "Mapping", "Insitu EChem", "Electrical"],
             )
             self.assertEqual(panel.substrate_page.btn_load_raw.GetLabel(), "Load txt/wdf")
             self.assertEqual(panel.substrate_page.btn_load_wire.GetLabel(), "Load fitted")
             self.assertEqual(panel.substrate_page.btn_update_baseline_preview.GetLabel(), "Update")
+            self.assertEqual(panel.substrate_page.btn_send_params.GetLabel(), "Send params to Converting")
             self.assertIsInstance(panel.substrate_page.lbl_raw, wx.TextCtrl)
             self.assertIsInstance(panel.substrate_page.lbl_wire, wx.TextCtrl)
             self.assertTrue(panel.substrate_page.lbl_raw.GetWindowStyleFlag() & wx.TE_READONLY)
             self.assertTrue(panel.substrate_page.lbl_wire.GetWindowStyleFlag() & wx.TE_READONLY)
             self.assertEqual(panel.substrate_page.lbl_wire.GetValue(), "No fitted result loaded")
+            self.assertEqual(panel.converting_page.btn_load.GetLabel(), "Load wdf")
+            self.assertEqual(panel.converting_page.btn_add.GetLabel(), "Add")
+            self.assertEqual(panel.converting_page.btn_delete.GetLabel(), "Delete")
+            self.assertEqual(panel.converting_page.btn_load_baseline.GetLabel(), "Load to Baseline")
+            self.assertEqual(panel.converting_page.btn_correct.GetLabel(), "Correct Baseline")
+            self.assertEqual(panel.converting_page.btn_export.GetLabel(), "Export All")
+            self.assertFalse(panel.converting_page.btn_export.IsEnabled())
+            self.assertEqual(panel.converting_page.load_box.GetStaticBox().GetLabel(), "Load file")
+            self.assertEqual(panel.converting_page.preview_box.GetStaticBox().GetLabel(), "Preview")
+            self.assertEqual(panel.converting_page.baseline_box.GetStaticBox().GetLabel(), "Baseline")
+            self.assertEqual(panel.mapping_page.btn_save_each_origin.GetLabel(), "Save one for each")
+            self.assertFalse(panel.mapping_page.btn_save_each_origin.IsEnabled())
             self.assertEqual(panel.insitu_page.btn_load_insitu.GetLabel(), "Load wdf/txt")
             self.assertEqual(panel.insitu_page.btn_update_preview.GetLabel(), "Update Figure")
             self.assertEqual(panel.insitu_page.cb_spectrum_legend.GetLabel(), "Spectrum")
@@ -306,6 +319,91 @@ class RamanInsituEchemGuiTests(unittest.TestCase):
             finally:
                 frame.Destroy()
 
+    def test_converting_preview_checks_preserve_range_and_explicit_parameter_send(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            paths = []
+            for index in range(2):
+                path = Path(tmp) / f"spectrum_{index + 1}.txt"
+                path.write_text("#Wave\t#Intensity\n100\t1\n99\t2\n", encoding="utf-8")
+                paths.append(path)
+            frame = wx.Frame(None)
+            try:
+                panel = RamanAnalysisPanel(frame)
+                converting = panel.converting_page
+                converting.tc_min.SetValue("95")
+                converting.tc_max.SetValue("105")
+                converting.add_paths(paths[:1])
+                converting.add_paths(paths[1:])
+
+                self.assertEqual(converting.file_list.GetItemCount(), 2)
+                self.assertEqual(converting.selected_indexes(), [1])
+                self.assertTrue(converting.btn_export.IsEnabled())
+                self.assertEqual(converting.tc_min.GetValue(), "95")
+                self.assertEqual(converting.tc_max.GetValue(), "105")
+                self.assertTrue(all(item.preview_enabled for item in converting.items))
+                converting.draw_preview()
+                self.assertEqual(len(converting.figure.axes[0].lines), 2)
+
+                for index in converting.selected_indexes():
+                    converting.file_list.SetItemState(index, 0, wx.LIST_STATE_SELECTED)
+                converting.draw_preview()
+                self.assertEqual(len(converting.figure.axes[0].lines), 2)
+
+                baseline = panel.substrate_page
+                baseline.choice_method.SetStringSelection("drPLS")
+                baseline.rb_auto.SetValue(False)
+                baseline.rb_manual.SetValue(True)
+                baseline.update_parameter_controls()
+                baseline.tc_param1.SetValue("2e5")
+                baseline.tc_param2.SetValue("0.15")
+                converting.choice_method.SetStringSelection("asPLS")
+                panel.notebook.SetSelection(0)
+                panel.notebook.SetSelection(1)
+                self.assertEqual(converting.choice_method.GetStringSelection(), "asPLS")
+                panel.notebook.SetSelection(0)
+                baseline.on_send_params_to_converting(None)
+
+                self.assertEqual(converting.choice_method.GetStringSelection(), "drPLS")
+                self.assertTrue(converting.rb_manual.GetValue())
+                self.assertEqual(converting.tc_param1.GetValue(), "2e5")
+                self.assertEqual(converting.tc_param2.GetValue(), "0.15")
+                self.assertEqual(panel.notebook.GetSelection(), 1)
+            finally:
+                frame.Destroy()
+
+    def test_converting_preview_checkbox_toggles_all_selected_rows_and_restores_state(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            paths = []
+            for index in range(2):
+                path = Path(tmp) / f"checked_{index + 1}.txt"
+                path.write_text("#Wave\t#Intensity\n100\t1\n99\t2\n", encoding="utf-8")
+                paths.append(path)
+            frame = wx.Frame(None)
+            try:
+                panel = RamanAnalysisPanel(frame)
+                converting = panel.converting_page
+                converting.add_paths(paths)
+
+                converting.file_list.CheckItem(0, False)
+                wx.Yield()
+                self.assertEqual([item.preview_enabled for item in converting.items], [False, False])
+                self.assertFalse(converting.file_list.IsItemChecked(1))
+
+                converting.file_list.SetItemState(1, 0, wx.LIST_STATE_SELECTED)
+                converting.file_list.CheckItem(0, True)
+                wx.Yield()
+                self.assertEqual([item.preview_enabled for item in converting.items], [True, False])
+
+                params = converting.collect_app_parameters()
+                target = RamanAnalysisPanel(wx.Frame(None)).converting_page
+                try:
+                    target.apply_app_parameters(params)
+                    self.assertEqual([item.preview_enabled for item in target.items], [True, False])
+                finally:
+                    target.GetTopLevelParent().Destroy()
+            finally:
+                frame.Destroy()
+
     def test_mapping_preview_tabs_and_every_n_legend_behavior(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "map.txt"
@@ -319,6 +417,8 @@ class RamanInsituEchemGuiTests(unittest.TestCase):
                 panel = RamanAnalysisPanel(frame)
                 mapping = panel.mapping_page
                 mapping.load_dataset(path)
+
+                self.assertTrue(mapping.btn_save_each_origin.IsEnabled())
 
                 self.assertEqual(
                     [mapping.mapping_notebook.GetPageText(index) for index in range(mapping.mapping_notebook.GetPageCount())],
@@ -342,6 +442,42 @@ class RamanInsituEchemGuiTests(unittest.TestCase):
                 self.assertTrue(mapping.cb_raw_legend.IsEnabled())
                 self.assertEqual(len(mapping.figure_raw.axes[0].lines), 2)
                 self.assertIsNotNone(mapping.figure_raw.axes[0].get_legend())
+            finally:
+                frame.Destroy()
+
+    def test_mapping_individual_export_continues_after_one_file_failure(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "map.txt"
+            path.write_text(
+                "#X\t#Y\t#Wave\t#Intensity\n"
+                "1\t2\t100\t10\n1\t2\t99\t20\n"
+                "3\t4\t100\t30\n3\t4\t99\t40\n",
+                encoding="utf-8",
+            )
+            frame = wx.Frame(None)
+            try:
+                panel = RamanAnalysisPanel(frame).mapping_page
+                panel.load_dataset(path)
+                targets = [Path(tmp) / "map_sequence_1.txt", Path(tmp) / "map_sequence_2.txt"]
+                from ca_app.gui.panels import raman_panel as raman_panel_module
+
+                original_export = raman_panel_module.export_origin_spectrum_txt
+
+                def fail_second(dataset, spectrum_index, output_file):
+                    if spectrum_index == 1:
+                        raise OSError("test failure")
+                    return original_export(dataset, spectrum_index, output_file)
+
+                raman_panel_module.export_origin_spectrum_txt = fail_second
+                try:
+                    succeeded, failed = panel.save_one_for_each_to_folder(targets)
+                finally:
+                    raman_panel_module.export_origin_spectrum_txt = original_export
+
+                self.assertEqual((succeeded, failed), (1, 1))
+                self.assertTrue(targets[0].exists())
+                self.assertFalse(targets[1].exists())
+                self.assertIn("test failure", panel.log_box.GetValue())
             finally:
                 frame.Destroy()
 

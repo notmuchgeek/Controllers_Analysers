@@ -1,10 +1,10 @@
-﻿# Agent Instructions for Controllers & Analysers
+# Agent Instructions for Controllers & Analysers
 
 This file is the source of truth for coding agents working inside the `ca_app` project.
 
 ## 1. Active Project
 
-The active runnable application is the packaged v16.17.260608.0011 application:
+The active runnable application is the packaged v16.21.260630.2340 application:
 
 Version format:
 
@@ -12,18 +12,21 @@ Version format:
 v<major>.<minor>.<YYMMDD>.<HHMM>
 ```
 
-For `v16.17.260608.0011`:
+For `v16.21.260630.2340`:
 
 - `v16` is the larger version change.
-- `.17` is the smaller version number within v16.
-- `260608` is the date of the change in YYMMDD format.
-- `0011` is the exact 24-hour time when Codex, the coding agent, changed code or project files.
+- `.21` is the smaller version number within v16.
+- `260630` is the date of the change in YYMMDD format.
+- `2340` is the exact 24-hour time when Codex, the coding agent, changed code or project files.
 
 Whenever Codex implements changes from a plan, increment the smaller version number, update the date, update the exact 24-hour time, and propagate the new version to the program window title, About/Versions text, package metadata, and project documentation.
 
 ```text
 ca_app/
   run_ca_app.py
+  setup_ca_app.py
+  requirements.txt
+  wheelhouse/
   src/ca_app/
 ```
 
@@ -57,7 +60,7 @@ The AFM/KPFM controller behavior was migrated from the v10 reconstruction and sh
 
 ## 2. Project Purpose
 
-Controllers & Analysers is a wxPython GUI for experiment control and analysis workflows. It currently includes AFM/KPFM Keithley control, AFM/KPFM CPD image analysis, APS/DWF/SPV analysis, TPC laser-diode control, Raman baseline correction, Raman Mapping, Raman Insitu EChem sequence analysis, and Raman Electrical CSV preview/classification.
+Controllers & Analysers is a wxPython GUI for experiment control and analysis workflows. It currently includes AFM/KPFM Keithley control, AFM/KPFM CPD image analysis, APS/DWF/SPV analysis, TPC laser-diode control, Raman baseline correction and batch conversion, Raman Mapping, Raman Insitu EChem sequence analysis, and Raman Electrical CSV preview/classification.
 
 The AFM/KPFM controller sources current through a Keithley source meter over RS-232 serial communication. It applies ON/OFF timing patterns, reads measured voltage live, and can control by target optical intensity using a current-intensity calibration CSV.
 
@@ -112,6 +115,12 @@ Install for development:
 pip install -e .
 ```
 
+End-user first-run setup is handled by `create_ca_app_shortcut.bat`. It finds a
+Python 3.10+ interpreter, runs `setup_ca_app.py`, uses compatible local wheels
+with PyPI fallback, and creates `ca_app.lnk` only after dependency verification
+succeeds. The bootstrap records per-interpreter state under local application
+data rather than inside the OneDrive project folder.
+
 Run tests:
 
 ```cmd
@@ -160,6 +169,10 @@ src/ca_app/core/raman_mapping.py
   Raman WiRE WDF/TXT loading, mapping unstacking, Origin TXT export,
   selected-sequence TXT export, and WDF image/location metadata helpers.
 
+src/ca_app/core/raman_converting.py
+  Raman batch-conversion items, supported WDF/TXT normalization, baseline-result
+  conversion, collision-safe naming, and raw-only Origin TXT export.
+
 src/ca_app/core/raman_baseline.py
   Raman text import, asPLS, drPLS, and Polynomial/backcor substrate-baseline
   fitting, WiRE overlay interpolation, and corrected text export.
@@ -206,7 +219,7 @@ tests/
 
 ## 5. Refactor Rule
 
-The v16.17.260608.0011 application separates the main shell from independent workspace panels. The AFM/KPFM controller panel still intentionally keeps the tested Keithley runtime behavior together to avoid changing hardware semantics during naming and structure cleanup.
+The v16.21.260630.2340 application separates the main shell from independent workspace panels. The AFM/KPFM controller panel still intentionally keeps the tested Keithley runtime behavior together to avoid changing hardware semantics during naming and structure cleanup.
 
 When refactoring further:
 
@@ -551,7 +564,21 @@ Output behavior:
 - Save writes only baseline-corrected intensity. Single-spectrum inputs save two-column TXT. Time-sequence inputs save `#Time/#Wave/#Intensity`. Sequence and WDF multi-spectrum inputs save `#Sequence/#Wave/#Intensity`. Origin-style wide inputs save the same wide three-header-row layout.
 - Optional WiRE software analysed results can be loaded from a `_Copy.txt` file and overlaid on the corrected-spectrum figure only.
 
-## 14. Raman Mapping
+## 14. Raman Converting
+
+The active Raman Converting workspace is available from:
+
+```text
+View -> Raman -> Converting
+```
+
+Converting follows the fixed left-control/right-preview layout, with a log below the preview. Its section titles are `Load file`, `Preview`, `Baseline`, and `Export`, without numeric prefixes. It batch-loads WDF/TXT files into a Ctrl/Shift multi-select list. Users may add, delete, and drag-reorder entries. Every new entry is checked for preview by default; checking or unchecking one row while multiple rows are selected applies that preview state to every selected row. Row selection remains separate and controls actions such as Delete, Load to Baseline, and Correct Baseline.
+
+Typed Preview Min/Max values are user state and must not be replaced by loaded-file data ranges. `Load to Baseline` requires exactly one selected entry and transfers it in memory. Baseline parameters return only when the user clicks `Send params to Converting` beside `Fit`; successful transfer opens Converting. Ordinary tab switching must not synchronize parameters. `Correct Baseline` processes every spectrum in every selected entry and adds separate checked `_baselined` in-memory entries without replacing originals.
+
+`Export All` selects one destination folder and writes every list entry individually as raw-only Origin-friendly wide TXT. WDF extensions become `.txt`; corrected entries use `_baselined.txt`; duplicate output stems receive `_2`, `_3`, and later numeric suffixes. Existing destination files require one overwrite confirmation.
+
+## 15. Raman Mapping
 
 The active Raman Mapping workspace is available from:
 
@@ -574,6 +601,7 @@ Mapping behavior:
 
 - Load WDF/TXT and unstack spectra into a wide table where column 1 is wavenumber, column 2 onward are individual spectra, then averaged intensity, then normalised intensity.
 - `Save` in Save file exports Origin-friendly TXT. The `Averaged` and `Normalised` checkboxes decide whether averaged intensity and normalised intensity columns are included.
+- `Save one for each` appears below `Save`, asks for one output folder, and exports every raw spectrum to `<source_stem>_sequence_<sequence>.txt`. Each file contains only `Wavenumber` and `Intensity`, followed by their `cm\+(-1)` and `a.u.` units and two-column numeric data. It does not include a third sequence header row or averaged/normalised columns.
 - Mapping Save file TXT uses three header rows: repeated `Intensity` long names without spectrum numbers, `cm\+(-1)` as the wavenumber unit, and `Sequence 1`, `Sequence 2`, etc. in the third header row.
 - `Every N for preview` and `Legend` live in the Load file section. `Every N = 1` plots all spectra; `Every N > 1` plots every N-th spectrum in `Raw data`.
 - The Mapping `Legend` checkbox affects only the `Raw data` tab and remains available for `Every N = 1`.
@@ -585,7 +613,7 @@ Mapping behavior:
 - `Location` shows only mapping locations and WDF embedded image/location metadata where available; sequence WDF files may legitimately have no image/location metadata.
 - `Selected` shows only selected spectra. Its legend labels are short spectrum/sequence numbers and must not include X/Y coordinates.
 
-## 15. Raman Insitu EChem
+## 16. Raman Insitu EChem
 
 The active Insitu EChem workspace is available from:
 
@@ -678,7 +706,7 @@ Save Plot/Data buttons:
 
 Each button saves one PNG and one CSV for the corresponding result plot.
 
-## 16. Raman Electrical
+## 17. Raman Electrical
 
 The active Raman Electrical workspace is available from:
 
@@ -720,7 +748,7 @@ V_Drain
 
 For V_Gate and V_Drain, show classification (`const`, `pulse`, `changing`, or `missing`), voltage value, pulse count, initial pulse time, and pulse duration. If the trace is constant, voltage value is the constant voltage. If the trace is pulsed, voltage value is the pulse voltage. If not applicable, show `-`.
 
-## 17. Testing Checklist
+## 18. Testing Checklist
 
 After code edits, run:
 
