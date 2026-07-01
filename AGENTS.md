@@ -4,7 +4,7 @@ This file is the source of truth for coding agents working inside the `ca_app` p
 
 ## 1. Active Project
 
-The active runnable application is the packaged v16.21.260630.2340 application:
+The active runnable application is the packaged v16.22.260701.0042 application:
 
 Version format:
 
@@ -12,12 +12,12 @@ Version format:
 v<major>.<minor>.<YYMMDD>.<HHMM>
 ```
 
-For `v16.21.260630.2340`:
+For `v16.22.260701.0042`:
 
 - `v16` is the larger version change.
-- `.21` is the smaller version number within v16.
-- `260630` is the date of the change in YYMMDD format.
-- `2340` is the exact 24-hour time when Codex, the coding agent, changed code or project files.
+- `.22` is the smaller version number within v16.
+- `260701` is the date of the change in YYMMDD format.
+- `0042` is the exact 24-hour time when Codex, the coding agent, changed code or project files.
 
 Whenever Codex implements changes from a plan, increment the smaller version number, update the date, update the exact 24-hour time, and propagate the new version to the program window title, About/Versions text, package metadata, and project documentation.
 
@@ -163,7 +163,7 @@ src/ca_app/gui/panels/aps_panel.py
   APS, DWF, workfunction, DOS, and SPV analysis GUI.
 
 src/ca_app/gui/panels/raman_panel.py
-  Raman notebook with Baseline, Mapping, Insitu EChem, and Electrical tabs.
+  Raman notebook with Baseline, Converting, Mapping, Insitu EChem, and Electrical tabs.
 
 src/ca_app/core/raman_mapping.py
   Raman WiRE WDF/TXT loading, mapping unstacking, Origin TXT export,
@@ -219,7 +219,7 @@ tests/
 
 ## 5. Refactor Rule
 
-The v16.21.260630.2340 application separates the main shell from independent workspace panels. The AFM/KPFM controller panel still intentionally keeps the tested Keithley runtime behavior together to avoid changing hardware semantics during naming and structure cleanup.
+The v16.22.260701.0042 application separates the main shell from independent workspace panels. The AFM/KPFM controller panel still intentionally keeps the tested Keithley runtime behavior together to avoid changing hardware semantics during naming and structure cleanup.
 
 When refactoring further:
 
@@ -489,21 +489,21 @@ The Raman Baseline workspace uses the same fixed left/right layout style as APS:
 - Right side: one `Preview` tab containing two stacked figures.
 - Bottom-right: Raman log.
 
-The `Baseline` section contains `Load txt/wdf`, loaded file name, `Selected columns`, and `Update`.
+The `Baseline` section contains `Load txt/wdf`, a checked multi-file list with `File`/`Spectra`/`Type` columns, `Add`, `Delete`, `Selected columns`, and `Update`. It supports Ctrl/Shift selection and drag reordering. Checks control preview only; Fit and Save all operate on every loaded file.
 The `Fitting Parameters` section contains method, parameter mode, lambda/order values, k/eta/threshold values, and the below-baseline fraction where relevant.
-The `Save` section contains `Load fitted`, fitted file name, output filename, `Fit`, and `Save`.
+The `Save` section contains `Load fitted`, fitted file name, output filename, `Fit`, `Save`, and `Save all`. `Load fitted`, output filename, and `Save` are enabled only when exactly one file is loaded.
 
 Preview layout:
 
 ```text
 Preview
-  top: raw Raman spectrum with estimated baseline
-  bottom: baseline-corrected Raman spectrum, with optional WiRE software analysed result overlay
+  top: checked raw Raman spectra with estimated baselines
+  bottom: checked baseline-corrected Raman spectra, with optional single-file WiRE software analysed result overlay
 ```
 
 Raman shift preview axes display from smaller wavenumbers on the left to larger wavenumbers on the right, even when input files store wavenumbers in descending order.
 
-Raman Baseline input supports single-spectrum TXT/WDF and multi-spectrum TXT/WDF files. Single-spectrum TXT files use the same two-column numeric format as the example files:
+Raman Baseline batch-loads single-spectrum TXT/WDF and multi-spectrum TXT/WDF files. Every new list item is checked for preview by default; checking or unchecking one row while several rows are selected applies that preview state to the selected rows. Single-spectrum TXT files use the same two-column numeric format as the example files:
 
 ```text
 #Wave    #Intensity
@@ -515,7 +515,7 @@ The single-spectrum loader accepts at least two numeric columns and uses the fir
 
 Multi-spectrum TXT files may use `#Time/#Wave/#Intensity`, `#Sequence/#Wave/#Intensity`, or Origin-style wide data where the first numeric column is wavenumber and remaining numeric columns are spectra. Multi-spectrum WDF files are loaded through the same WDF reader used by Mapping and Insitu EChem. Baseline correction is applied to every spectrum with the selected fitting settings.
 
-`Selected columns` accepts 1-based spectrum selections such as `1,2-4,5` and controls preview only. Users must click `Update` to redraw the selected preview spectra. When only one spectrum is loaded, `Selected columns` and `Update` are disabled.
+`Selected columns` accepts 1-based spectrum selections such as `1,2-4,5` and controls preview only. The same selection applies to every checked multi-spectrum file and must be valid for all of them. Users must click `Update` to redraw the selected preview spectra. When no loaded file contains multiple spectra, `Selected columns` and `Update` are disabled.
 
 Fitting methods:
 
@@ -555,13 +555,15 @@ Auto/manual behavior:
 
 - Auto mode evaluates the visible candidate lists.
 - Manual mode requires one value per parameter and only refits when the user clicks `Fit`.
-- Loading a raw Raman file in Auto mode runs fitting automatically.
-- Changing the fitting method in Auto mode runs fitting automatically when a raw file is loaded.
+- Loading Raman files in Auto mode fits every loaded file with one settings snapshot.
+- Changing the fitting method in Auto mode refits every loaded file.
+- Manual Fit processes every loaded file, regardless of row selection or preview checks.
 
 Output behavior:
 
 - Output filename defaults to the raw file stem plus `_Copy.txt`.
 - Save writes only baseline-corrected intensity. Single-spectrum inputs save two-column TXT. Time-sequence inputs save `#Time/#Wave/#Intensity`. Sequence and WDF multi-spectrum inputs save `#Sequence/#Wave/#Intensity`. Origin-style wide inputs save the same wide three-header-row layout.
+- Save all selects one folder and writes every fitted list item as `<source_stem>_Copy.txt`; duplicate stems receive `_2`, `_3`, and later suffixes. Existing targets require one overwrite confirmation. Save all remains disabled if any loaded item has no successful fit result.
 - Optional WiRE software analysed results can be loaded from a `_Copy.txt` file and overlaid on the corrected-spectrum figure only.
 
 ## 14. Raman Converting

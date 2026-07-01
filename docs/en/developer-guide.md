@@ -1,6 +1,6 @@
 # Developer Guide
 
-Version: `v16.21.260630.2340`
+Version: `v16.22.260701.0042`
 
 This guide is for coding agents and human maintainers.
 

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ca-app"
-version = "16.21.260630.2340"
+version = "16.22.260701.0042"
 description = "wxPython GUI for experiment control and analysis workflows."
 readme = "README.md"
 requires-python = ">=3.10"

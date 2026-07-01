@@ -1,6 +1,6 @@
 # Module Map
 
-Version: `v16.21.260630.2340`
+Version: `v16.22.260701.0042`
 
 This map describes the project from the top layer to the lower implementation layers.
 
@@ -122,7 +122,8 @@ Stable import surfaces for calibration and function behavior.
 src/ca_app/core/raman_baseline.py
 ```
 
-Raman TXT import and baseline correction.
+Raman TXT/WDF import, multi-file Baseline list items, collision-safe Save all
+targets, and baseline correction.
 
 ```text
 src/ca_app/core/raman_converting.py

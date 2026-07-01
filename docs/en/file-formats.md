@@ -1,6 +1,6 @@
 # File Formats
 
-Version: `v16.21.260630.2340`
+Version: `v16.22.260701.0042`
 
 This document lists the user-facing file formats expected by the application.
 
@@ -28,6 +28,11 @@ The loader uses the first two numeric columns as Raman shift and intensity.
 Baseline also accepts multi-spectrum TXT using `#Time/#Wave/#Intensity`, `#Sequence/#Wave/#Intensity`, or Origin-style wide data where the first numeric column is wavenumber and remaining numeric columns are spectra. Single-spectrum and multi-spectrum WDF files are supported when `renishawWiRE` is installed.
 
 Saved corrected output follows the loaded logical input format: two-column TXT, `#Time/#Wave/#Intensity`, `#Sequence/#Wave/#Intensity`, or Origin-style wide TXT.
+
+Baseline `Save all` chooses one destination folder and writes every successfully
+fitted source as `<source_stem>_Copy.txt`. Duplicate source stems receive `_2`,
+`_3`, and later suffixes while every output preserves its own logical input
+format.
 
 ## Raman Converting WDF/TXT
 

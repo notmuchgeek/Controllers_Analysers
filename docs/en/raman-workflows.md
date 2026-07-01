@@ -4,11 +4,20 @@ The Raman workspace is implemented in one wx panel module, `raman_panel.py`, wit
 
 ## Baseline
 
-Raman Baseline reads single-spectrum TXT/WDF files and multi-spectrum TXT/WDF files, then fits substrate baselines using `asPLS`, `drPLS`, or `Polynomial/backcor`. Auto mode searches visible candidate lists. Manual mode uses one value per parameter.
+Raman Baseline batch-loads single-spectrum and multi-spectrum TXT/WDF files into
+a checked, reorderable list, then fits every loaded file using one shared
+`asPLS`, `drPLS`, or `Polynomial/backcor` settings snapshot. Checks affect only
+the overlaid preview; Ctrl/Shift row selection controls list operations.
 
 Raman spectrum preview axes display from smaller wavenumbers on the left to larger wavenumbers on the right, even when input files store wavenumbers in descending order.
 
-Multi-spectrum TXT inputs may use `#Time/#Wave/#Intensity`, `#Sequence/#Wave/#Intensity`, or Origin-style wide data. The Baseline section's `Selected columns` field controls preview spectra only and requires `Update`; fitting and saving process every spectrum. Save output follows the loaded logical format.
+Multi-spectrum TXT inputs may use `#Time/#Wave/#Intensity`,
+`#Sequence/#Wave/#Intensity`, or Origin-style wide data. One shared `Selected
+columns` value controls the same preview columns across every checked
+multi-spectrum file and requires `Update`; fitting processes every internal
+spectrum. Single-file `Save` preserves its previous behavior, while `Save all`
+chooses one folder, uses collision-safe `<source_stem>_Copy.txt` names, and
+preserves each input's logical format.
 
 ## Converting
 

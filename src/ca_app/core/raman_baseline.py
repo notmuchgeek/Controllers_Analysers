@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Iterable
 import warnings
 
 import numpy as np
@@ -135,6 +136,46 @@ class RamanBaselineBatchResult:
         if not self.results:
             raise RamanBaselineError("No baseline results are available.")
         return self.results[0]
+
+
+@dataclass
+class RamanBaselineFileItem:
+    """One source file and its optional corrected result in the Baseline list."""
+
+    display_name: str
+    source: RamanBaselineInput
+    preview_enabled: bool = True
+    result: RamanBaselineBatchResult | None = None
+
+    @property
+    def source_path(self) -> Path:
+        return self.source.source_path
+
+    @property
+    def n_spectra(self) -> int:
+        return self.source.n_spectra
+
+
+def baseline_output_targets(
+    items: Iterable[RamanBaselineFileItem],
+    output_dir: str | Path,
+) -> list[Path]:
+    """Return collision-safe ``<source_stem>_Copy.txt`` paths in item order."""
+
+    output_dir = Path(output_dir)
+    used: set[str] = set()
+    targets: list[Path] = []
+    for item in items:
+        stem = item.source_path.stem or Path(item.display_name).stem or "raman"
+        preferred_stem = f"{stem}_Copy"
+        candidate = f"{preferred_stem}.txt"
+        counter = 2
+        while candidate.casefold() in used:
+            candidate = f"{preferred_stem}_{counter}.txt"
+            counter += 1
+        used.add(candidate.casefold())
+        targets.append(output_dir / candidate)
+    return targets
 
 
 def read_raman_txt(path: str | Path) -> RamanSpectrum:

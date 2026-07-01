@@ -6,7 +6,7 @@ Controllers & Analysers is our research-group desktop app for experiment control
 
 ![AFM/KPFM controller screen](assets/images/AFM_KPFM_Controller.png)
 
-Current version: `Controller & Analysers v16.21.260630.2340`
+Current version: `Controller & Analysers v16.22.260701.0042`
 
 ## First-Time Setup
 
@@ -131,16 +131,16 @@ The status/log area reports the selected diode, applied current, measured readba
 
 ### Baseline
 
-Baseline corrects one spectrum or a multi-spectrum TXT/WDF file.
+Baseline corrects one or many single-/multi-spectrum TXT/WDF files with the same fitting settings.
 
-1. `Load txt/wdf`.
-2. For multi-spectrum data, enter `Selected columns` and click `Update` to choose which spectra appear in the preview. Fitting and saving still process every spectrum.
-3. Choose `asPLS`, `drPLS`, or `Polynomial/backcor`.
-4. Use Auto mode to search the available settings or Manual mode to enter one setting and click `Fit`.
-5. Optionally `Load fitted` to overlay a WiRE `_Copy.txt` result.
-6. Click `Save` to write baseline-corrected intensity in the corresponding TXT layout.
+1. Use `Load txt/wdf` or `Add` to put files in the list. Ctrl/Shift selection, Delete, and drag reordering work like the Converting list.
+2. Checked files appear together in the Preview. Checking one of several selected rows applies the same preview state to all selected rows.
+3. For multi-spectrum files, enter one shared `Selected columns` value and click `Update`; the same 1-based columns are previewed from every checked multi-spectrum file. Fitting still processes every spectrum.
+4. Choose `asPLS`, `drPLS`, or `Polynomial/backcor`, then use Auto mode or click `Fit` in Manual mode. Fit processes every loaded file with one settings snapshot.
+5. With exactly one loaded file, `Load fitted`, Output filename, and `Save` keep their previous behavior.
+6. `Save all` chooses one folder and writes every successfully fitted item as `<source>_Copy.txt`, preserving its original logical TXT layout.
 
-The `Preview` tab shows raw spectra with fitted baselines above and corrected spectra below.
+The `Preview` tab overlays checked raw/baseline curves above and corrected curves below.
 
 ![Raman baseline](assets/images/Raman_Baseline.png)
 
@@ -226,4 +226,3 @@ For TPC, verify the selected diode, current, current limit, COM port, and baudra
 - The shortcut opens and closes immediately: rerun the BAT file and read the setup messages, then contact the maintainer.
 - A data file does not load: check the expected format and exact column names, then read the workspace log.
 - Hardware does not respond: press `STOP`/`OFF`, check the COM port and cabling, and ask the maintainer before changing safety limits.
-

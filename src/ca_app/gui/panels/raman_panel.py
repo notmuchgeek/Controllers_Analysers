@@ -84,8 +84,10 @@ from ca_app.core.raman_baseline import (
     METHOD_BACKCOR,
     METHOD_DRPLS,
     RamanBaselineError,
+    RamanBaselineFileItem,
     RamanBaselineInput,
     RamanBaselineSettings,
+    baseline_output_targets,
     default_output_name,
     fit_raman_baseline,
     fit_raman_baseline_input,
@@ -2636,6 +2638,9 @@ class RamanSubstrateBaselinePanel(wx.Panel):
     def __init__(self, parent, raman_panel):
         super().__init__(parent)
         self.raman_panel = raman_panel
+        self.items: list[RamanBaselineFileItem] = []
+        self.drag_indexes: list[int] = []
+        self.refreshing_checks = False
         self.raw_path = ""
         self.raw_input: RamanBaselineInput | None = None
         self.raw_spectrum = None
@@ -2646,6 +2651,7 @@ class RamanSubstrateBaselinePanel(wx.Panel):
         self.fit_running = False
         self.fit_result_cache = {}
         self.fit_started_at = None
+        self.output_source_path = ""
         self.build_ui()
 
     def build_ui(self):
@@ -2662,9 +2668,33 @@ class RamanSubstrateBaselinePanel(wx.Panel):
 
         baseline_box = wx.StaticBoxSizer(wx.VERTICAL, scrolled, "Baseline")
         self.btn_load_raw = wx.Button(scrolled, label="Load txt/wdf")
-        self.lbl_raw = wx.TextCtrl(scrolled, value="No Raman file loaded", style=wx.TE_READONLY)
         self.btn_load_raw.Bind(wx.EVT_BUTTON, self.on_load_raw)
-        baseline_box.Add(self.add_load_row(self.btn_load_raw, self.lbl_raw), 0, wx.EXPAND | wx.ALL, 5)
+        baseline_box.Add(self.btn_load_raw, 0, wx.EXPAND | wx.ALL, 5)
+        self.baseline_file_list = wx.ListCtrl(
+            scrolled,
+            style=wx.LC_REPORT | wx.LC_HRULES | wx.LC_VRULES,
+        )
+        self.baseline_file_list.EnableCheckBoxes(True)
+        self.baseline_file_list.InsertColumn(0, "File", width=285)
+        self.baseline_file_list.InsertColumn(1, "Spectra", width=70)
+        self.baseline_file_list.InsertColumn(2, "Type", width=105)
+        self.baseline_file_list.SetMinSize((-1, 180))
+        self.baseline_file_list.Bind(wx.EVT_LIST_ITEM_SELECTED, self.on_list_selection)
+        self.baseline_file_list.Bind(wx.EVT_LIST_ITEM_DESELECTED, self.on_list_selection)
+        self.baseline_file_list.Bind(wx.EVT_LIST_ITEM_CHECKED, self.on_preview_check_changed)
+        self.baseline_file_list.Bind(wx.EVT_LIST_ITEM_UNCHECKED, self.on_preview_check_changed)
+        self.baseline_file_list.Bind(wx.EVT_LIST_BEGIN_DRAG, self.on_begin_drag)
+        self.baseline_file_list.Bind(wx.EVT_LEFT_UP, self.on_end_drag)
+        self.baseline_file_list.Bind(wx.EVT_KEY_DOWN, self.on_list_key)
+        baseline_box.Add(self.baseline_file_list, 1, wx.EXPAND | wx.LEFT | wx.RIGHT, 5)
+        file_buttons = wx.BoxSizer(wx.HORIZONTAL)
+        self.btn_add_raw = wx.Button(scrolled, label="Add")
+        self.btn_delete_raw = wx.Button(scrolled, label="Delete")
+        self.btn_add_raw.Bind(wx.EVT_BUTTON, self.on_load_raw)
+        self.btn_delete_raw.Bind(wx.EVT_BUTTON, self.on_delete)
+        file_buttons.Add(self.btn_add_raw, 1, wx.EXPAND | wx.RIGHT, 5)
+        file_buttons.Add(self.btn_delete_raw, 1, wx.EXPAND)
+        baseline_box.Add(file_buttons, 0, wx.EXPAND | wx.ALL, 5)
         selected_grid = wx.FlexGridSizer(rows=1, cols=3, vgap=6, hgap=6)
         selected_grid.AddGrowableCol(1, 1)
         self.tc_baseline_selected = wx.TextCtrl(scrolled, value="1")
@@ -2737,9 +2767,13 @@ class RamanSubstrateBaselinePanel(wx.Panel):
         save_box.Add(output_grid, 0, wx.EXPAND | wx.ALL, 5)
 
         self.btn_save = wx.Button(scrolled, label="Save")
+        self.btn_save_all = wx.Button(scrolled, label="Save all")
         self.btn_save.Disable()
+        self.btn_save_all.Disable()
         self.btn_save.Bind(wx.EVT_BUTTON, self.on_save)
-        save_box.Add(self.btn_save, 0, wx.EXPAND | wx.ALL, 5)
+        self.btn_save_all.Bind(wx.EVT_BUTTON, self.on_save_all)
+        save_box.Add(self.btn_save, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 5)
+        save_box.Add(self.btn_save_all, 0, wx.EXPAND | wx.ALL, 5)
         root.Add(save_box, 0, wx.EXPAND | wx.ALL, 5)
 
         scrolled.SetSizer(root)
@@ -2783,35 +2817,193 @@ class RamanSubstrateBaselinePanel(wx.Panel):
         return row
 
     def on_load_raw(self, event):
-        paths = self.open_raman_file("Load Raman TXT/WDF file")
+        paths = self.open_raman_file("Load Raman TXT/WDF files")
         if not paths:
             return
-        path = paths[0]
-        try:
-            source = read_raman_baseline_input(path)
-        except Exception as exc:
-            self.show_warning(str(exc))
-            return
-        self.load_baseline_input(source, source_label=Path(path).name)
+        self.add_paths(paths)
 
     def load_baseline_input(self, source, source_label=None):
-        """Load an already parsed source, including in-memory Converting data."""
-        self.raw_input = source
-        self.raw_spectrum = source.spectra[0]
-        self.raw_path = str(source.source_path)
-        self.batch_result = None
-        self.result = None
+        """Add an already parsed source, including in-memory Converting data."""
         label = source_label or source.source_path.name
-        self.lbl_raw.SetValue(label)
-        self.lbl_raw.SetToolTip(str(source.source_path))
-        self.tc_output_name.SetValue(default_output_name(label))
-        self.btn_save.Disable()
-        self.update_preview_selection_controls()
-        self.draw_loaded_raw()
-        self.log(f"Loaded Raman file: {label}; {self.raw_input.n_spectra} spectrum/spectra.")
-        log_usage_event(self, "raman_baseline_raw_loaded", {"spectra": self.raw_input.n_spectra, **file_metadata(source.source_path)})
+        name = unique_item_name(label, [item.display_name for item in self.items])
+        self.items.append(RamanBaselineFileItem(name, source))
+        if len(self.items) > 1:
+            self.clear_wire_result()
+        self.refresh_file_list(selected=[len(self.items) - 1])
+        self.log(f"Loaded Raman file: {name}; {source.n_spectra} spectrum/spectra.")
+        log_usage_event(
+            self,
+            "raman_baseline_raw_loaded",
+            {"files": 1, "spectra": source.n_spectra, **file_metadata(source.source_path)},
+        )
         if self.rb_auto.GetValue():
             self.start_fit("Auto fitting after Raman file load.")
+
+    def add_paths(self, paths, restoring=False):
+        start_index = len(self.items)
+        loaded = 0
+        spectra = 0
+        existing = [item.display_name for item in self.items]
+        for path in paths:
+            try:
+                source = read_raman_baseline_input(path)
+                name = unique_item_name(Path(path).name, existing)
+                self.items.append(RamanBaselineFileItem(name, source))
+                existing.append(name)
+                loaded += 1
+                spectra += source.n_spectra
+                self.log(f"Loaded {Path(path).name}; {source.n_spectra} spectrum/spectra.")
+            except Exception as exc:
+                self.log(f"Could not load {Path(path).name}: {exc}")
+        if not loaded:
+            if not restoring:
+                self.show_warning("No Raman files could be loaded. See the Raman log for details.")
+            return
+        if len(self.items) > 1:
+            self.clear_wire_result()
+        selected = [] if restoring else list(range(start_index, len(self.items)))
+        self.refresh_file_list(selected=selected)
+        if not restoring:
+            log_usage_event(
+                self,
+                "raman_baseline_raw_loaded",
+                {"files": loaded, "spectra": spectra},
+            )
+            if self.rb_auto.GetValue():
+                self.start_fit("Auto fitting after Raman file load.")
+
+    def refresh_file_list(self, selected=None):
+        selected = [] if selected is None else selected
+        self.baseline_file_list.Freeze()
+        self.baseline_file_list.DeleteAllItems()
+        for index, item in enumerate(self.items):
+            row = self.baseline_file_list.InsertItem(index, item.display_name)
+            self.baseline_file_list.SetItem(row, 1, str(item.n_spectra))
+            self.baseline_file_list.SetItem(row, 2, item.source_path.suffix.lstrip(".").upper() or "TXT")
+            self.baseline_file_list.SetItemData(row, index)
+        self.refreshing_checks = True
+        try:
+            for index, item in enumerate(self.items):
+                self.baseline_file_list.CheckItem(index, bool(item.preview_enabled))
+        finally:
+            self.refreshing_checks = False
+        for index in selected:
+            if 0 <= index < len(self.items):
+                self.baseline_file_list.SetItemState(
+                    index,
+                    wx.LIST_STATE_SELECTED,
+                    wx.LIST_STATE_SELECTED,
+                )
+        self.baseline_file_list.Thaw()
+        self.sync_legacy_state()
+        self.update_buttons()
+        self.redraw_preview()
+
+    def selected_indexes(self):
+        indexes = []
+        index = self.baseline_file_list.GetFirstSelected()
+        while index != -1:
+            indexes.append(index)
+            index = self.baseline_file_list.GetNextSelected(index)
+        return indexes
+
+    def on_list_selection(self, event):
+        self.update_buttons()
+        event.Skip()
+
+    def on_preview_check_changed(self, event):
+        index = event.GetIndex()
+        if self.refreshing_checks or not 0 <= index < len(self.items):
+            event.Skip()
+            return
+        checked = bool(self.baseline_file_list.IsItemChecked(index))
+        selected = self.selected_indexes()
+        targets = selected if index in selected and len(selected) > 1 else [index]
+        self.refreshing_checks = True
+        try:
+            for target in targets:
+                self.items[target].preview_enabled = checked
+                if self.baseline_file_list.IsItemChecked(target) != checked:
+                    self.baseline_file_list.CheckItem(target, checked)
+        finally:
+            self.refreshing_checks = False
+        self.update_preview_selection_controls()
+        self.redraw_preview()
+        event.Skip()
+
+    def on_list_key(self, event):
+        if event.GetKeyCode() == wx.WXK_DELETE:
+            self.on_delete(None)
+            return
+        event.Skip()
+
+    def on_delete(self, event):
+        if self.fit_running:
+            return
+        selected = self.selected_indexes()
+        for index in reversed(selected):
+            del self.items[index]
+        if selected:
+            self.clear_wire_result()
+            self.refresh_file_list()
+
+    def on_begin_drag(self, event):
+        if self.fit_running:
+            return
+        self.drag_indexes = self.selected_indexes() or [event.GetIndex()]
+        self.baseline_file_list.SetCursor(wx.Cursor(wx.CURSOR_HAND))
+        if not self.baseline_file_list.HasCapture():
+            self.baseline_file_list.CaptureMouse()
+
+    def on_end_drag(self, event):
+        if not self.drag_indexes:
+            event.Skip()
+            return
+        target, _flags = self.baseline_file_list.HitTest(event.GetPosition())
+        selected = self.reorder_items(self.drag_indexes, target)
+        self.drag_indexes = []
+        if self.baseline_file_list.HasCapture():
+            self.baseline_file_list.ReleaseMouse()
+        self.baseline_file_list.SetCursor(wx.NullCursor)
+        self.refresh_file_list(selected=selected)
+
+    def reorder_items(self, indexes, target):
+        moving = [self.items[index] for index in indexes]
+        remaining = [item for index, item in enumerate(self.items) if index not in indexes]
+        if target == wx.NOT_FOUND:
+            insert_at = len(remaining)
+        else:
+            insert_at = sum(1 for index in range(target) if index not in indexes)
+        self.items = remaining[:insert_at] + moving + remaining[insert_at:]
+        return list(range(insert_at, insert_at + len(moving)))
+
+    def sync_legacy_state(self):
+        if len(self.items) == 1:
+            item = self.items[0]
+            self.raw_path = str(item.source_path)
+            self.raw_input = item.source
+            self.raw_spectrum = item.source.spectra[0]
+            self.batch_result = item.result
+            self.result = item.result.first_result if item.result is not None else None
+            source_key = str(item.source_path)
+            if self.output_source_path != source_key:
+                self.tc_output_name.SetValue(default_output_name(item.source_path))
+                self.output_source_path = source_key
+        else:
+            self.raw_path = ""
+            self.raw_input = None
+            self.raw_spectrum = None
+            self.batch_result = None
+            self.result = None
+            self.output_source_path = ""
+            if hasattr(self, "tc_output_name"):
+                self.tc_output_name.SetValue("")
+
+    def clear_wire_result(self):
+        self.wire_path = ""
+        self.wire_spectrum = None
+        if hasattr(self, "lbl_wire"):
+            self.lbl_wire.SetValue("No fitted result loaded")
 
     def apply_baseline_settings_values(self, values):
         method = str(values.get("method", METHOD_ASPLS))
@@ -2827,6 +3019,9 @@ class RamanSubstrateBaselinePanel(wx.Panel):
         self.tc_param3.SetValue(str(values.get("param3", self.tc_param3.GetValue())))
 
     def on_load_wire(self, event):
+        if len(self.items) != 1:
+            self.show_warning("Load fitted is available only when one Raman file is loaded.")
+            return
         paths = self.open_txt_file("Load fitted result")
         if not paths:
             return
@@ -2840,7 +3035,7 @@ class RamanSubstrateBaselinePanel(wx.Panel):
         self.lbl_wire.SetValue(Path(path).name)
         self.log(f"Loaded fitted result: {Path(path).name}.")
         log_usage_event(self, "raman_baseline_wire_loaded", file_metadata(path))
-        if self.result is not None:
+        if self.items[0].result is not None:
             self.draw_result()
 
     def open_txt_file(self, title):
@@ -2859,26 +3054,23 @@ class RamanSubstrateBaselinePanel(wx.Panel):
             self,
             title,
             wildcard="Raman files (*.wdf;*.txt)|*.wdf;*.txt|WDF files (*.wdf)|*.wdf|Text files (*.txt)|*.txt|All files (*.*)|*.*",
-            style=wx.FD_OPEN | wx.FD_FILE_MUST_EXIST,
+            style=wx.FD_OPEN | wx.FD_FILE_MUST_EXIST | wx.FD_MULTIPLE,
         ) as dialog:
             if dialog.ShowModal() != wx.ID_OK:
                 return []
-            return [dialog.GetPath()]
+            return dialog.GetPaths()
 
     def on_update_preview(self, event):
-        if self.batch_result is not None:
-            self.draw_result()
-        elif self.raw_input is not None:
-            self.draw_loaded_raw()
+        self.redraw_preview(show_warning=True)
 
     def on_method_changed(self, event):
         self.update_parameter_controls()
-        if self.raw_spectrum is not None and self.rb_auto.GetValue():
+        if self.items and self.rb_auto.GetValue():
             self.start_fit("Auto fitting after method change.")
 
     def on_mode_changed(self, event):
         self.update_parameter_controls()
-        if self.raw_spectrum is not None and self.rb_auto.GetValue():
+        if self.items and self.rb_auto.GetValue():
             self.start_fit("Auto fitting after switching to Auto mode.")
 
     def on_fit(self, event):
@@ -2908,41 +3100,115 @@ class RamanSubstrateBaselinePanel(wx.Panel):
         if self.fit_running:
             self.show_warning("A Raman baseline fit is already running.")
             return
-        if self.raw_input is None:
-            self.show_warning("Load a Raman file before fitting.")
+        if not self.items:
+            self.show_warning("Load one or more Raman files before fitting.")
             return
         try:
             settings = self.read_settings()
         except Exception as exc:
             self.show_warning(str(exc))
             return
-        cache_key = self.fit_cache_key(self.raw_input, settings)
-        cached_result = self.fit_result_cache.get(cache_key)
-        if cached_result is not None:
-            self.log(f"{message} Reused cached Raman baseline fit.")
-            log_usage_event(self, "raman_baseline_fit_reused", {"method": settings.method, "auto": settings.auto})
-            self.on_fit_result(cached_result, log_finished=False)
-            return
 
+        sources = list(self.items)
+        for item in sources:
+            item.result = None
         self.fit_running = True
         self.fit_started_at = time.monotonic()
+        self.sync_legacy_state()
         self.update_buttons()
-        self.log(message)
-        log_usage_event(self, "raman_baseline_fit_started", {"method": settings.method, "auto": settings.auto, "spectra": self.raw_input.n_spectra})
-        threading.Thread(target=self.fit_worker, args=(self.raw_input, settings, cache_key), daemon=True).start()
+        self.redraw_preview()
+        spectra_count = sum(item.n_spectra for item in sources)
+        self.log(f"{message} Processing {len(sources)} file(s).")
+        log_usage_event(
+            self,
+            "raman_baseline_fit_started",
+            {
+                "method": settings.method,
+                "auto": settings.auto,
+                "files": len(sources),
+                "spectra": spectra_count,
+            },
+        )
+        threading.Thread(
+            target=self.fit_worker,
+            args=(sources, settings),
+            daemon=True,
+        ).start()
 
-    def fit_worker(self, source, settings, cache_key):
-        try:
-            result = fit_raman_baseline_input(source, settings)
-            wx.CallAfter(self.on_fit_result, result, cache_key)
-        except Exception as exc:
-            wx.CallAfter(self.on_fit_error, f"Raman baseline fit failed: {exc}")
+    def fit_worker(self, items, settings):
+        results = []
+        failures = []
+        reused = 0
+        for item in items:
+            cache_key = self.fit_cache_key(item.source, settings)
+            cached_result = self.fit_result_cache.get(cache_key)
+            if cached_result is not None:
+                results.append((item, cached_result, cache_key))
+                reused += 1
+                continue
+            try:
+                result = fit_raman_baseline_input(item.source, settings)
+                results.append((item, result, cache_key))
+            except Exception as exc:
+                failures.append((item, str(exc)))
+        wx.CallAfter(self.on_fit_batch_finished, results, failures, settings, reused)
+
+    def on_fit_batch_finished(self, results, failures, settings, reused):
+        for item, batch_result, cache_key in results:
+            item.result = batch_result
+            self.fit_result_cache[cache_key] = batch_result
+            self.log_selected_parameters(batch_result.first_result, prefix=item.display_name)
+            if batch_result.first_result.auto:
+                self.log(
+                    f"{item.display_name}: evaluated "
+                    f"{len(batch_result.first_result.search_records)} automatic parameter "
+                    f"candidate(s) for {item.n_spectra} spectrum/spectra."
+                )
+        for item, message in failures:
+            item.result = None
+            self.log(f"Baseline fitting failed for {item.display_name}: {message}")
+        self.fit_running = False
+        duration_ms = (
+            int((time.monotonic() - self.fit_started_at) * 1000)
+            if self.fit_started_at is not None
+            else 0
+        )
+        self.fit_started_at = None
+        self.sync_legacy_state()
+        self.update_buttons()
+        self.redraw_preview()
+        self.log(
+            f"Baseline fitting complete: {len(results)} succeeded, "
+            f"{len(failures)} failed, {reused} reused from cache."
+        )
+        log_usage_event(
+            self,
+            "raman_baseline_fit_finished",
+            {
+                "method": settings.method,
+                "auto": settings.auto,
+                "duration_ms": duration_ms,
+                "files": len(results) + len(failures),
+                "succeeded": len(results),
+                "failed": len(failures),
+                "reused": reused,
+                "spectra": sum(item.n_spectra for item, *_rest in results),
+            },
+        )
+        if failures:
+            self.show_warning(
+                f"Baseline fitting failed for {len(failures)} file(s). "
+                "See the Raman log for details."
+            )
 
     def on_fit_result(self, batch_result, cache_key=None, log_finished=True):
+        """Compatibility path for one-result callers and focused logging tests."""
         if hasattr(batch_result, "first_result"):
             self.batch_result = batch_result
             self.result = batch_result.first_result
             spectra_count = batch_result.source.n_spectra
+            if len(getattr(self, "items", [])) == 1:
+                self.items[0].result = batch_result
         else:
             self.result = batch_result
             spectra_count = 1
@@ -2978,7 +3244,11 @@ class RamanSubstrateBaselinePanel(wx.Panel):
         self.show_warning(message)
 
     def on_save(self, event):
-        if self.batch_result is None:
+        if len(self.items) != 1:
+            self.show_warning("Save is available only when one Raman file is loaded.")
+            return
+        item = self.items[0]
+        if item.result is None:
             self.show_warning("Run Raman baseline fitting before saving.")
             return
         output_name = self.tc_output_name.GetValue().strip()
@@ -2987,16 +3257,65 @@ class RamanSubstrateBaselinePanel(wx.Panel):
             return
         output_path = Path(output_name)
         if not output_path.is_absolute():
-            output_path = Path(self.raw_path).parent / output_path
+            output_path = item.source_path.parent / output_path
         if output_path.suffix == "":
             output_path = output_path.with_suffix(".txt")
         try:
-            saved_path = save_corrected_baseline_input(self.batch_result, output_path)
+            saved_path = save_corrected_baseline_input(item.result, output_path)
         except Exception as exc:
             self.show_warning(str(exc))
             return
         self.log(f"Saved corrected Raman spectrum: {saved_path}")
         log_usage_event(self, "raman_baseline_corrected_saved", file_metadata(saved_path))
+
+    def on_save_all(self, event):
+        if not self.items:
+            self.show_warning("Load and fit one or more Raman files before saving.")
+            return
+        if not all(item.result is not None for item in self.items):
+            self.show_warning("Fit every loaded Raman file successfully before using Save all.")
+            return
+        with wx.DirDialog(
+            self,
+            "Choose folder for baseline-corrected Raman files",
+            style=wx.DD_DEFAULT_STYLE | wx.DD_DIR_MUST_EXIST,
+        ) as dialog:
+            if dialog.ShowModal() != wx.ID_OK:
+                return
+            output_dir = Path(dialog.GetPath())
+        targets = baseline_output_targets(self.items, output_dir)
+        existing = [path for path in targets if path.exists()]
+        if existing:
+            answer = wx.MessageBox(
+                f"{len(existing)} output file(s) already exist. Overwrite them?",
+                "Confirm overwrite",
+                wx.YES_NO | wx.CANCEL | wx.ICON_WARNING,
+                self,
+            )
+            if answer != wx.YES:
+                return
+        succeeded, failed = self.save_all_to_folder(targets)
+        self.log(f"Save all complete: {succeeded} succeeded, {failed} failed.")
+        log_usage_event(
+            self,
+            "raman_baseline_all_saved",
+            {"succeeded": succeeded, "failed": failed},
+        )
+        if failed:
+            self.show_warning(f"Could not save {failed} file(s). See the Raman log for details.")
+
+    def save_all_to_folder(self, targets):
+        succeeded = 0
+        failed = 0
+        for item, target in zip(self.items, targets):
+            try:
+                save_corrected_baseline_input(item.result, target)
+                succeeded += 1
+                self.log(f"Saved corrected Raman file: {target.name}.")
+            except Exception as exc:
+                failed += 1
+                self.log(f"Could not save {target.name}: {exc}")
+        return succeeded, failed
 
     def read_settings(self):
         method = self.choice_method.GetStringSelection()
@@ -3124,60 +3443,124 @@ class RamanSubstrateBaselinePanel(wx.Panel):
 
     def update_buttons(self):
         enabled = not self.fit_running
+        selected = len(self.selected_indexes()) if hasattr(self, "baseline_file_list") else 0
+        single_file = len(self.items) == 1
+        all_fitted = bool(self.items) and all(item.result is not None for item in self.items)
         self.btn_load_raw.Enable(enabled)
-        self.btn_load_wire.Enable(enabled)
-        self.btn_fit.Enable(enabled)
+        self.btn_add_raw.Enable(enabled)
+        self.btn_delete_raw.Enable(enabled and selected > 0)
+        self.baseline_file_list.Enable(enabled)
+        self.btn_load_wire.Enable(enabled and single_file)
+        self.lbl_wire.Enable(enabled and single_file)
+        self.tc_output_name.Enable(enabled and single_file)
+        self.btn_fit.Enable(enabled and bool(self.items))
         self.btn_send_params.Enable(enabled)
-        self.btn_save.Enable(enabled and self.batch_result is not None)
+        can_save_one = single_file and self.items[0].result is not None
+        self.btn_save.Enable(enabled and can_save_one)
+        self.btn_save_all.Enable(enabled and all_fitted)
         self.update_preview_selection_controls()
 
     def update_preview_selection_controls(self):
-        has_multi = self.raw_input is not None and self.raw_input.n_spectra > 1 and not self.fit_running
+        has_multi = any(item.n_spectra > 1 for item in self.items) and not self.fit_running
         if hasattr(self, "tc_baseline_selected"):
             self.tc_baseline_selected.Enable(has_multi)
         if hasattr(self, "btn_update_baseline_preview"):
             self.btn_update_baseline_preview.Enable(has_multi)
 
-    def selected_preview_indices(self):
-        if self.raw_input is None:
-            return []
-        if self.raw_input.n_spectra <= 1:
+    def selected_preview_indices(self, item=None):
+        if item is None:
+            if len(self.items) != 1:
+                return []
+            item = self.items[0]
+        if item.n_spectra <= 1:
             return [0]
-        return parse_selected_spectra(self.tc_baseline_selected.GetValue(), self.raw_input.n_spectra)
+        try:
+            return parse_selected_spectra(
+                self.tc_baseline_selected.GetValue(),
+                item.n_spectra,
+            )
+        except Exception as exc:
+            raise RamanBaselineError(
+                f"{item.display_name} has {item.n_spectra} spectra: {exc}"
+            ) from exc
 
-    def baseline_spectrum_label(self, index):
-        if self.raw_input is None:
-            return ""
-        if self.raw_input.labels and index < len(self.raw_input.labels):
-            label = self.raw_input.labels[index]
-            if self.raw_input.input_format == "time":
-                return f"Time {label:g}"
-            return f"Seq {label:g}"
-        return f"Seq {index + 1}"
+    def preview_entries(self):
+        entries = []
+        for item in self.items:
+            if not item.preview_enabled:
+                continue
+            for index in self.selected_preview_indices(item):
+                entries.append((item, index))
+        return entries
 
-    def draw_loaded_raw(self):
+    def redraw_preview(self, show_warning=False):
+        try:
+            entries = self.preview_entries()
+        except Exception as exc:
+            message = f"Preview update warning: {exc}"
+            self.log(message)
+            if show_warning:
+                self.show_warning(str(exc))
+            return False
+        if not entries:
+            self.clear_preview("Tick one or more files to preview their spectra.")
+            return True
+        if any(item.result is not None for item, _index in entries):
+            self.draw_result(entries)
+        else:
+            self.draw_loaded_raw(entries)
+        return True
+
+    def baseline_spectrum_label(self, index, item=None):
+        if item is None:
+            if len(self.items) != 1:
+                return ""
+            item = self.items[0]
+        source = item.source
+        if source.n_spectra <= 1:
+            return item.display_name
+        if source.labels and index < len(source.labels):
+            label = source.labels[index]
+            detail = f"Time {label:g}" if source.input_format == "time" else f"Seq {label:g}"
+        else:
+            detail = f"Seq {index + 1}"
+        return f"{item.display_name}:{detail}"
+
+    def draw_loaded_raw(self, entries=None):
+        if entries is None:
+            try:
+                entries = self.preview_entries()
+            except Exception as exc:
+                self.log(f"Preview update warning: {exc}")
+                return
+        if not entries:
+            self.clear_preview("Tick one or more files to preview their spectra.")
+            return
         self.figure_preview.clear()
         raw_ax = self.figure_preview.add_subplot(211)
         corrected_ax = self.figure_preview.add_subplot(212)
-        if self.raw_input is None:
-            self.clear_preview()
-            return
-        try:
-            selected = self.selected_preview_indices()
-        except Exception as exc:
-            self.log(f"Preview update warning: {exc}")
-            selected = [0]
-        for index in selected:
-            spectrum = self.raw_input.spectra[index]
-            raw_ax.plot(spectrum.raman_shift, spectrum.intensity, label=self.baseline_spectrum_label(index), linewidth=1.2)
-        raw_ax.set_title("Raw Raman Spectrum")
+        x_values = []
+        for item, index in entries:
+            spectrum = item.source.spectra[index]
+            x_values.append(spectrum.raman_shift)
+            raw_ax.plot(
+                spectrum.raman_shift,
+                spectrum.intensity,
+                label=self.baseline_spectrum_label(index, item),
+                linewidth=1.2,
+            )
+        raw_ax.set_title("Raw Raman Spectra")
         raw_ax.set_xlabel("Raman shift / cm$^{-1}$")
         raw_ax.set_ylabel("Intensity")
-        self.apply_raman_axis_style(raw_ax, self.raw_input.spectra[selected[0]].raman_shift)
+        self.apply_raman_axis_style(
+            raw_ax,
+            np.concatenate(x_values),
+            show_legend=len(entries) <= 20,
+        )
         corrected_ax.text(
             0.5,
             0.5,
-            "Run fitting to show the corrected Raman spectrum.",
+            "Run fitting to show the corrected Raman spectra.",
             ha="center",
             va="center",
             transform=corrected_ax.transAxes,
@@ -3186,54 +3569,102 @@ class RamanSubstrateBaselinePanel(wx.Panel):
         self.figure_preview.tight_layout(pad=1.2)
         self.canvas_preview.draw()
 
-    def draw_result(self):
+    def draw_result(self, entries=None):
+        if entries is None:
+            try:
+                entries = self.preview_entries()
+            except Exception as exc:
+                self.log(f"Preview update warning: {exc}")
+                return
+        if not entries:
+            self.clear_preview("Tick one or more files to preview their spectra.")
+            return
         self.figure_preview.clear()
         raw_ax = self.figure_preview.add_subplot(211)
         corrected_ax = self.figure_preview.add_subplot(212)
-        if self.batch_result is None:
-            self.draw_loaded_raw()
-            return
-        try:
-            selected = self.selected_preview_indices()
-        except Exception as exc:
-            self.log(f"Preview update warning: {exc}")
-            selected = [0]
-        for index in selected:
-            result = self.batch_result.results[index]
+        raw_x_values = []
+        corrected_x_values = []
+        raw_lines = 0
+        corrected_lines = 0
+        for item, index in entries:
+            label = self.baseline_spectrum_label(index, item)
+            if item.result is None:
+                spectrum = item.source.spectra[index]
+                x = spectrum.raman_shift
+                raw_ax.plot(x, spectrum.intensity, label=f"{label} raw", linewidth=1.2)
+                raw_x_values.append(x)
+                raw_lines += 1
+                continue
+            result = item.result.results[index]
             x = result.spectrum.raman_shift
-            label = self.baseline_spectrum_label(index)
             raw_ax.plot(x, result.spectrum.intensity, label=f"{label} raw", linewidth=1.2)
             raw_ax.plot(x, result.baseline, label=f"{label} baseline", linewidth=1.8)
-        raw_ax.set_title("Raw Raman Spectrum with Estimated Baseline")
+            corrected_ax.plot(x, result.corrected, label=f"{label} corrected", linewidth=1.2)
+            raw_x_values.append(x)
+            corrected_x_values.append(x)
+            raw_lines += 2
+            corrected_lines += 1
+        raw_ax.set_title("Raw Raman Spectra with Estimated Baselines")
         raw_ax.set_xlabel("Raman shift / cm$^{-1}$")
         raw_ax.set_ylabel("Intensity")
-        self.apply_raman_axis_style(raw_ax, self.batch_result.results[selected[0]].spectrum.raman_shift)
+        self.apply_raman_axis_style(
+            raw_ax,
+            np.concatenate(raw_x_values),
+            show_legend=raw_lines <= 20,
+        )
 
-        for index in selected:
-            result = self.batch_result.results[index]
-            x = result.spectrum.raman_shift
-            label = self.baseline_spectrum_label(index)
-            corrected_ax.plot(x, result.corrected, label=f"{label} corrected", linewidth=1.2)
-        if self.wire_spectrum is not None and len(selected) == 1:
-            x = self.batch_result.results[selected[0]].spectrum.raman_shift
-            wire_on_x = interpolate_to_reference_x(self.wire_spectrum.raman_shift, self.wire_spectrum.intensity, x)
-            corrected_ax.plot(x, wire_on_x, label="WiRE software analysed results", linewidth=1.2)
-        corrected_ax.axhline(0, linewidth=1.0, color="k")
-        corrected_ax.set_title("Baseline-Corrected Raman Spectrum")
-        corrected_ax.set_xlabel("Raman shift / cm$^{-1}$")
-        corrected_ax.set_ylabel("Corrected intensity")
-        self.apply_raman_axis_style(corrected_ax, self.batch_result.results[selected[0]].spectrum.raman_shift)
+        if (
+            self.wire_spectrum is not None
+            and len(self.items) == 1
+            and len(entries) == 1
+            and self.items[0].result is not None
+        ):
+            item, index = entries[0]
+            x = item.result.results[index].spectrum.raman_shift
+            wire_on_x = interpolate_to_reference_x(
+                self.wire_spectrum.raman_shift,
+                self.wire_spectrum.intensity,
+                x,
+            )
+            corrected_ax.plot(
+                x,
+                wire_on_x,
+                label="WiRE software analysed results",
+                linewidth=1.2,
+            )
+            corrected_x_values.append(x)
+            corrected_lines += 1
+        if corrected_lines:
+            corrected_ax.axhline(0, linewidth=1.0, color="k")
+            corrected_ax.set_title("Baseline-Corrected Raman Spectra")
+            corrected_ax.set_xlabel("Raman shift / cm$^{-1}$")
+            corrected_ax.set_ylabel("Corrected intensity")
+            self.apply_raman_axis_style(
+                corrected_ax,
+                np.concatenate(corrected_x_values),
+                show_legend=corrected_lines <= 20,
+            )
+        else:
+            corrected_ax.text(
+                0.5,
+                0.5,
+                "Run fitting to show the corrected Raman spectra.",
+                ha="center",
+                va="center",
+                transform=corrected_ax.transAxes,
+            )
+            corrected_ax.set_axis_off()
         self.figure_preview.tight_layout(pad=1.2)
         self.canvas_preview.draw()
 
-    def clear_preview(self):
+    def clear_preview(self, raw_message=None):
         self.figure_preview.clear()
         raw_ax = self.figure_preview.add_subplot(211)
         corrected_ax = self.figure_preview.add_subplot(212)
         raw_ax.text(
             0.5,
             0.5,
-            "Load a Raman file to preview substrate baseline fitting.",
+            raw_message or "Load Raman files to preview substrate baseline fitting.",
             ha="center",
             va="center",
             transform=raw_ax.transAxes,
@@ -3241,7 +3672,7 @@ class RamanSubstrateBaselinePanel(wx.Panel):
         corrected_ax.text(
             0.5,
             0.5,
-            "Run fitting to show the corrected Raman spectrum.",
+            "Run fitting to show the corrected Raman spectra.",
             ha="center",
             va="center",
             transform=corrected_ax.transAxes,
@@ -3252,15 +3683,17 @@ class RamanSubstrateBaselinePanel(wx.Panel):
 
     def collect_app_parameters(self):
         return {
-            "raw_path": self.raw_path,
-            "wire_path": self.wire_path,
+            "source_paths": [str(item.source_path) for item in self.items],
+            "source_preview_enabled": [bool(item.preview_enabled) for item in self.items],
+            "raw_path": str(self.items[0].source_path) if len(self.items) == 1 else "",
+            "wire_path": self.wire_path if len(self.items) == 1 else "",
             "selected_columns": self.tc_baseline_selected.GetValue(),
             "method": self.choice_method.GetStringSelection(),
             "auto": self.rb_auto.GetValue(),
             "param1": self.tc_param1.GetValue(),
             "param2": self.tc_param2.GetValue(),
             "param3": self.tc_param3.GetValue(),
-            "output_name": self.tc_output_name.GetValue(),
+            "output_name": self.tc_output_name.GetValue() if len(self.items) == 1 else "",
         }
 
     def apply_app_parameters(self, params):
@@ -3277,38 +3710,33 @@ class RamanSubstrateBaselinePanel(wx.Panel):
         self.tc_param1.SetValue(str(params.get("param1", self.tc_param1.GetValue())))
         self.tc_param2.SetValue(str(params.get("param2", self.tc_param2.GetValue())))
         self.tc_param3.SetValue(str(params.get("param3", self.tc_param3.GetValue())))
-        self.tc_baseline_selected.SetValue(str(params.get("selected_columns", self.tc_baseline_selected.GetValue())))
-        self.tc_output_name.SetValue(str(params.get("output_name", self.tc_output_name.GetValue())))
-        self.batch_result = None
-        self.result = None
-        self.btn_save.Disable()
-
-        raw_path = str(params.get("raw_path", "") or "")
-        if raw_path:
-            try:
-                self.raw_input = read_raman_baseline_input(raw_path)
-                self.raw_spectrum = self.raw_input.spectra[0]
-                self.raw_path = raw_path
-                self.lbl_raw.SetValue(Path(raw_path).name)
-                if not self.tc_output_name.GetValue().strip():
-                    self.tc_output_name.SetValue(default_output_name(raw_path))
-                self.update_preview_selection_controls()
-                self.draw_loaded_raw()
-                self.log(f"Restored Raman file: {Path(raw_path).name}.")
-            except Exception as exc:
-                self.raw_path = raw_path
-                self.raw_input = None
-                self.raw_spectrum = None
-                self.lbl_raw.SetValue(Path(raw_path).name)
-                self.log(f"Could not restore Raman file: {exc}")
-        else:
-            self.raw_path = ""
-            self.raw_input = None
-            self.raw_spectrum = None
-            self.lbl_raw.SetValue("No Raman file loaded")
+        self.items = []
+        self.clear_wire_result()
+        source_paths = [
+            str(path) for path in params.get("source_paths", []) if str(path)
+        ]
+        if not source_paths:
+            legacy_path = str(params.get("raw_path", "") or "")
+            if legacy_path:
+                source_paths = [legacy_path]
+        if source_paths:
+            self.add_paths(source_paths, restoring=True)
+        preview_states = params.get("source_preview_enabled")
+        if isinstance(preview_states, list):
+            for item, preview_enabled in zip(self.items, preview_states):
+                item.preview_enabled = bool(preview_enabled)
+        self.tc_baseline_selected.SetValue(
+            str(params.get("selected_columns", self.tc_baseline_selected.GetValue()))
+        )
+        if len(self.items) == 1:
+            output_name = str(params.get("output_name", "") or "")
+            self.tc_output_name.SetValue(
+                output_name or default_output_name(self.items[0].source_path)
+            )
+            self.output_source_path = str(self.items[0].source_path)
 
         wire_path = str(params.get("wire_path", "") or "")
-        if wire_path:
+        if wire_path and len(self.items) == 1:
             try:
                 self.wire_spectrum = read_raman_txt(wire_path)
                 self.wire_path = wire_path
@@ -3320,18 +3748,15 @@ class RamanSubstrateBaselinePanel(wx.Panel):
                 self.lbl_wire.SetValue(Path(wire_path).name)
                 self.log(f"Could not restore WiRE result: {exc}")
         else:
-            self.wire_path = ""
-            self.wire_spectrum = None
-            self.lbl_wire.SetValue("No fitted result loaded")
-        if self.raw_spectrum is None:
-            self.clear_preview()
-        self.update_preview_selection_controls()
+            self.clear_wire_result()
+        self.refresh_file_list()
 
-    def log_selected_parameters(self, result):
+    def log_selected_parameters(self, result, prefix=None):
         params = result.selected_parameters
+        lead = f"{prefix}: " if prefix else ""
         if result.method == METHOD_BACKCOR:
             self.log(
-                f"{result.method} selected order={int(params['order'])}, "
+                f"{lead}{result.method} selected order={int(params['order'])}, "
                 f"threshold={float(params['threshold']):.6g}, "
                 f"below-baseline fraction={float(params['below_baseline_fraction']):.6g}, "
                 f"cost_function={params['cost_function']}, "
@@ -3340,17 +3765,17 @@ class RamanSubstrateBaselinePanel(wx.Panel):
             return
         secondary_name = "eta" if result.method == METHOD_DRPLS else "k"
         self.log(
-            f"{result.method} selected lambda={float(params['lambda']):.6g}, "
+            f"{lead}{result.method} selected lambda={float(params['lambda']):.6g}, "
             f"{secondary_name}={float(params[secondary_name]):.6g}, "
             f"iterations={int(params['iterations'])}, score={float(params['score']):.4g}."
         )
 
     @staticmethod
-    def apply_raman_axis_style(ax, x):
+    def apply_raman_axis_style(ax, x, show_legend=True):
         ax.grid(True, which="both", axis="both")
         ax.autoscale(enable=True, axis="both", tight=True)
         set_raman_xaxis_ascending(ax, x)
-        if ax.lines:
+        if show_legend and ax.lines:
             ax.legend(fontsize=8)
 
     def show_warning(self, message):

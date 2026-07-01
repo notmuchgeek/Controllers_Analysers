@@ -14,7 +14,11 @@ from ca_app.core.raman_baseline import (
     METHOD_BACKCOR,
     METHOD_DRPLS,
     RamanBaselineError,
+    RamanBaselineFileItem,
+    RamanBaselineInput,
     RamanBaselineSettings,
+    RamanSpectrum,
+    baseline_output_targets,
     default_output_name,
     fit_raman_baseline,
     fit_raman_baseline_input,
@@ -28,6 +32,32 @@ from ca_app.core.raman_baseline import (
 
 
 class RamanBaselineCoreTests(unittest.TestCase):
+    def test_baseline_output_targets_use_copy_suffix_and_avoid_collisions(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            first = RamanBaselineFileItem(
+                "sample.wdf",
+                RamanBaselineInput(
+                    Path(tmp) / "first" / "sample.wdf",
+                    "single",
+                    (RamanSpectrum(np.array([1.0]), np.array([2.0])),),
+                ),
+            )
+            second = RamanBaselineFileItem(
+                "sample.txt",
+                RamanBaselineInput(
+                    Path(tmp) / "second" / "sample.txt",
+                    "single",
+                    (RamanSpectrum(np.array([1.0]), np.array([3.0])),),
+                ),
+            )
+
+            targets = baseline_output_targets([first, second], Path(tmp) / "output")
+
+        self.assertEqual(
+            [path.name for path in targets],
+            ["sample_Copy.txt", "sample_Copy_2.txt"],
+        )
+
     def test_method_names_use_requested_gui_casing(self):
         self.assertEqual(METHOD_ASPLS, "asPLS")
         self.assertEqual(METHOD_DRPLS, "drPLS")

@@ -1,6 +1,6 @@
 # Testing
 
-Version: `v16.21.260630.2340`
+Version: `v16.22.260701.0042`
 
 Testing has two layers: automated non-hardware tests and manual GUI checks. Hardware tests require explicit user confirmation.
 
@@ -26,7 +26,7 @@ python run_ca_app.py
 Confirm that the window title is:
 
 ```text
-Controller & Analysers v16.21.260630.2340
+Controller & Analysers v16.22.260701.0042
 ```
 
 Open `Help -> About` and confirm the same version appears in the Versions section.
@@ -62,12 +62,14 @@ Without connecting hardware, verify:
 
 Baseline:
 
-- `Load txt/wdf` loads a two-column Raman file, sequence TXT, or WDF.
-- Multi-spectrum Baseline inputs enable `Selected columns` and require `Update` to redraw preview selections.
-- Single-spectrum Baseline inputs disable `Selected columns` and `Update`.
-- Auto mode fits after loading.
-- Manual mode waits for `Fit`.
-- Save writes corrected data in the same logical format as the input.
+- `Load txt/wdf` and `Add` batch-load two-column, sequence/wide TXT, or WDF files.
+- Checked rows overlay in Preview; Ctrl/Shift checks, Delete, and drag reordering match Converting.
+- One shared `Selected columns` value must be valid for every checked multi-spectrum file; single-spectrum inputs always preview their only spectrum.
+- Auto mode fits all loaded files after loading or method changes; Manual mode waits for `Fit`.
+- Partial fit failures remain visible in the log and keep Save all disabled.
+- Single-file Load fitted, Output filename, and Save disable when multiple files are loaded.
+- Save all preserves each input format, uses `<source_stem>_Copy.txt`, handles duplicate stems, confirms overwrite once, and continues after individual write failures.
+- Parameter restore preserves file order and preview checks, migrates legacy `raw_path`, and never restores fit results.
 
 Mapping:
 

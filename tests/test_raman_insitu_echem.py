@@ -268,9 +268,11 @@ class RamanInsituEchemGuiTests(unittest.TestCase):
             self.assertEqual(panel.substrate_page.btn_load_wire.GetLabel(), "Load fitted")
             self.assertEqual(panel.substrate_page.btn_update_baseline_preview.GetLabel(), "Update")
             self.assertEqual(panel.substrate_page.btn_send_params.GetLabel(), "Send params to Converting")
-            self.assertIsInstance(panel.substrate_page.lbl_raw, wx.TextCtrl)
+            self.assertEqual(panel.substrate_page.btn_add_raw.GetLabel(), "Add")
+            self.assertEqual(panel.substrate_page.btn_delete_raw.GetLabel(), "Delete")
+            self.assertEqual(panel.substrate_page.btn_save_all.GetLabel(), "Save all")
+            self.assertIsInstance(panel.substrate_page.baseline_file_list, wx.ListCtrl)
             self.assertIsInstance(panel.substrate_page.lbl_wire, wx.TextCtrl)
-            self.assertTrue(panel.substrate_page.lbl_raw.GetWindowStyleFlag() & wx.TE_READONLY)
             self.assertTrue(panel.substrate_page.lbl_wire.GetWindowStyleFlag() & wx.TE_READONLY)
             self.assertEqual(panel.substrate_page.lbl_wire.GetValue(), "No fitted result loaded")
             self.assertEqual(panel.converting_page.btn_load.GetLabel(), "Load wdf")
@@ -309,10 +311,9 @@ class RamanInsituEchemGuiTests(unittest.TestCase):
             frame = wx.Frame(None)
             try:
                 panel = RamanAnalysisPanel(frame).substrate_page
-
-                panel.raw_input = __import__("ca_app.core.raman_baseline", fromlist=["read_raman_baseline_input"]).read_raman_baseline_input(path)
-                panel.raw_spectrum = panel.raw_input.spectra[0]
-                panel.update_preview_selection_controls()
+                panel.rb_auto.SetValue(False)
+                panel.rb_manual.SetValue(True)
+                panel.add_paths([path])
 
                 self.assertTrue(panel.tc_baseline_selected.IsEnabled())
                 self.assertTrue(panel.btn_update_baseline_preview.IsEnabled())

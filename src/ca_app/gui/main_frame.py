@@ -15,7 +15,7 @@ from ca_app.runtime.usage_logger import USAGE_LOG_DIRNAME, UsageLogger
 
 WORKSPACE_NAMES = ("AFM/KPFM", "APS", "TPC", "Raman")
 DEFAULT_WORKSPACE = "AFM/KPFM"
-APP_VERSION = "v16.21.260630.2340"
+APP_VERSION = "v16.22.260701.0042"
 APP_TITLE = f"Controller & Analysers {APP_VERSION}"
 STATE_FILENAME = "app_state.json"
 RESTORE_VIEW = "view"
@@ -645,8 +645,8 @@ class CaAppFrame(wx.Frame):
             "  - Red/green laser-diode selection and current-limit enforcement\n"
             "  - Keithley current-source ON/OFF control with readback\n\n"
             "Raman Baseline\n"
-            "  - TXT/WDF loading with asPLS, drPLS, and Polynomial/backcor baseline fitting\n"
-            "  - Optional WiRE analysed result overlay and corrected TXT export\n\n"
+            "  - Multi-file TXT/WDF list, checked overlays, and shared asPLS, drPLS, or Polynomial/backcor fitting\n"
+            "  - Single-file WiRE overlay plus individual or Save all corrected TXT export\n\n"
             "Raman Converting\n"
             "  - Batch WDF/TXT loading, multi-file preview, and drag reordering\n"
             "  - Optional baseline correction and individual Origin-friendly TXT export\n\n"
